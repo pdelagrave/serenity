@@ -36,7 +36,7 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
         auto response = FileSystemAccessClient::Client::the().request_file(window, arguments.strings[1], Core::File::OpenMode::Read);
         if (response.is_error())
             return 1;
-        get_bits_widget->open_file(response.value().filename(), response.value().release_stream());
+        TRY(get_bits_widget->open_file(response.value().filename(), response.value().release_stream()));
     }
 
     return app->exec();

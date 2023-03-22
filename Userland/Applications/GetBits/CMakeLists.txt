@@ -9,6 +9,8 @@ compile_gml(GetBitsWindow.gml GetBitsWindowGML.h get_bits_window_gml)
 set(SOURCES
     GetBitsWidget.cpp
     main.cpp
+    BDecoder.cpp
+    MetaInfo.cpp
 )
 
 set(GENERATED_SOURCES

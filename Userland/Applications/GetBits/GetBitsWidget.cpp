@@ -5,15 +5,19 @@
  */
 
 #include "GetBitsWidget.h"
+#include "MetaInfo.h"
 #include <Applications/GetBits/GetBitsWindowGML.h>
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>
 #include <LibGUI/Menu.h>
 #include <LibGUI/Toolbar.h>
 
-void GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File>)
+ErrorOr<void> GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> file)
 {
     dbgln("Opening file {}", filename);
+    auto meta_info = TRY(MetaInfo::create(*file));
+    dbgln("Announce url: {}", meta_info.announce());
+    return {};
 }
 
 void GetBitsWidget::initialize_menubar(GUI::Window& window)
@@ -33,7 +37,7 @@ GetBitsWidget::GetBitsWidget()
         if (response.is_error())
             return;
 
-        open_file(response.value().filename(), response.value().release_stream());
+        open_file(response.value().filename(), response.value().release_stream()).release_error();
     });
 
     m_toolbar->add_action(*m_open_action);
