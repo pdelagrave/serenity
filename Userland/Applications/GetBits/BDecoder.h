@@ -30,6 +30,7 @@ public:
     static ErrorOr<BEncodingType> parse_bencoded(AK::SeekableStream&);
 
 private:
+    static constexpr String m_empty_string = String();
     static ErrorOr<u8> peek_next_byte(AK::SeekableStream&);
     static ErrorOr<i64> parse_integer(AK::SeekableStream&);
     static ErrorOr<ByteBuffer> parse_byte_array(AK::SeekableStream&);

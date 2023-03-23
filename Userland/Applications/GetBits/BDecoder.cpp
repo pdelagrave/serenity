@@ -83,11 +83,15 @@ ErrorOr<bencoded_dict> BDecoder::parse_dictionary(SeekableStream& stream)
 {
     VERIFY(TRY(stream.read_value<u8>()) == 'd');
     auto dict = bencoded_dict();
+    auto previous_key = m_empty_string;
     while (TRY(peek_next_byte(stream)) != 'e') {
         auto buffer = TRY(parse_byte_array(stream));
         auto key = TRY(String::from_utf8(StringView(buffer.bytes())));
+        if (key < previous_key)
+            return Error::from_string_literal("Invalid dictionary: entries key must be sorted");
         BEncodingType const& value = TRY(parse_bencoded(stream));
         dict.set(key, value);
+        previous_key = key;
     }
     VERIFY(TRY(stream.read_value<u8>()) == 'e');
     return dict;
