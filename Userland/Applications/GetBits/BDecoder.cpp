@@ -8,6 +8,8 @@
 #include <AK/String.h>
 #include <AK/StringUtils.h>
 
+// Reference: The 'bencoding' section of https://www.bittorrent.org/beps/bep_0003.html
+
 ErrorOr<u8> BDecoder::peek_next_byte(SeekableStream& stream)
 {
     u8 next_byte = stream.read_value<u8>().release_value();
@@ -34,17 +36,28 @@ ErrorOr<BEncodingType> BDecoder::parse_bencoded(SeekableStream& stream)
 ErrorOr<i64> BDecoder::parse_integer(SeekableStream& stream)
 {
     VERIFY(TRY(stream.read_value<u8>()) == 'i');
-    // TODO check for overflow
     auto integer_str = StringBuilder();
     u8 digit;
     while ((digit = TRY(stream.read_value<u8>())) != 'e') {
-        if (digit >= '0' && digit <= '9') {
+        if ((digit >= '0' && digit <= '9') || digit == '-') {
+            if (digit == '-' && integer_str.length() != 0)
+                return Error::from_string_literal("Invalid integer: When used, minus sign must be the first character.");
+            else if (integer_str.string_view() == "0")
+                return Error::from_string_literal("Invalid integer: Leading 0s not allowed.");
+            else if (integer_str.string_view() == '-' && digit == '0')
+                return Error::from_string_literal("Invalid integer: Leading 0s and -0 not allowed.");
+
             integer_str.append(digit);
         } else {
-            return Error::from_string_literal("Invalid integer");
+            return Error::from_string_literal("Invalid integer, valid characters are 0-9 and -");
         }
     }
-    return AK::StringUtils::convert_to_int<i64>(integer_str.string_view(), AK::TrimWhitespace::No).value();
+    // The BEP says there's no limit to integer size but let's keep it to i64 here.
+    auto ret = AK::StringUtils::convert_to_int<i64>(integer_str.string_view());
+    if (ret.has_value())
+        return ret.value();
+    else
+        return Error::from_string_literal("Invalid integer, likely out of bound");
 }
 
 ErrorOr<ByteBuffer> BDecoder::parse_byte_array(SeekableStream& stream)
