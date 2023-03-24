@@ -10,6 +10,7 @@ set(SOURCES
     GetBitsWidget.cpp
     main.cpp
     BDecoder.cpp
+    BEncoder.cpp
     MetaInfo.cpp
 )
 
@@ -18,4 +19,4 @@ set(GENERATED_SOURCES
 )
 
 serenity_app(GetBits ICON hard-disk)
-target_link_libraries(GetBits PRIVATE LibCore LibGfx LibGUI LibDesktop LibFileSystemAccessClient LibMain)
+target_link_libraries(GetBits PRIVATE LibCore LibGfx LibGUI LibDesktop LibFileSystemAccessClient LibMain LibCrypto)

@@ -21,8 +21,8 @@ struct bencoded_list : public AK::Vector<BEncodingType> {
     using AK::Vector<BEncodingType>::Vector;
 };
 
-struct bencoded_dict : public AK::HashMap<String, BEncodingType> {
-    using AK::HashMap<String, BEncodingType>::HashMap;
+struct bencoded_dict : public AK::OrderedHashMap<String, BEncodingType> {
+    using AK::OrderedHashMap<String, BEncodingType>::OrderedHashMap;
 };
 
 class BDecoder {
