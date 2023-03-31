@@ -27,13 +27,13 @@ struct bencoded_dict : public AK::OrderedHashMap<String, BEncodingType> {
 
 class BDecoder {
 public:
-    static ErrorOr<BEncodingType> parse_bencoded(AK::SeekableStream&);
+    static ErrorOr<BEncodingType> parse_bencoded(AK::Stream&);
 
 private:
     static constexpr String m_empty_string = String();
-    static ErrorOr<u8> peek_next_byte(AK::SeekableStream&);
-    static ErrorOr<i64> parse_integer(AK::SeekableStream&);
-    static ErrorOr<ByteBuffer> parse_byte_array(AK::SeekableStream&);
-    static ErrorOr<bencoded_dict> parse_dictionary(AK::SeekableStream&);
-    static ErrorOr<bencoded_list> parse_list(AK::SeekableStream&);
+    static ErrorOr<BEncodingType> parse_bencoded(AK::Stream&, const u8*);
+    static ErrorOr<i64> parse_integer(AK::Stream&);
+    static ErrorOr<ByteBuffer> parse_byte_array(AK::Stream&, u8);
+    static ErrorOr<bencoded_dict> parse_dictionary(AK::Stream&);
+    static ErrorOr<bencoded_list> parse_list(AK::Stream&);
 };

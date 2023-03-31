@@ -8,35 +8,31 @@
 #include "BDecoder.h"
 #include "BEncoder.h"
 #include <AK/MemoryStream.h>
-#include <AK/Base64.h>
 #include <LibCrypto/Hash/HashManager.h>
 
-ErrorOr<MetaInfo> MetaInfo::create(SeekableStream& stream)
+ErrorOr<MetaInfo> MetaInfo::create(Stream& stream)
 {
     auto meta_info = new MetaInfo();
     auto root = TRY(BDecoder::parse_bencoded(stream)).get<bencoded_dict>();
-    meta_info->m_announce = TRY(String::from_utf8(StringView(root.get("announce"_string.release_value_but_fixme_should_propagate_errors()).value().get<ByteBuffer>().bytes())));
+
+    meta_info->m_announce = URL(TRY(String::from_utf8(StringView(root.get("announce"_string.release_value_but_fixme_should_propagate_errors()).value().get<ByteBuffer>().bytes()))));
+    if (!meta_info->m_announce.is_valid()) {
+        return Error::from_string_view(TRY(String::formatted("'{}' is not a valid URL", meta_info->m_announce.to_deprecated_string())).to_deprecated_string());
+    }
 
     auto info_dict = root.get("info"_string.release_value_but_fixme_should_propagate_errors()).value();
 
-    auto buffer = TRY(ByteBuffer::create_uninitialized(TRY(stream.tell())));
-    auto s1 = FixedMemoryStream(buffer.span());
-//
-//    TRY(BEncoder::bencode(ByteBuffer::copy(TRY("hello!!"_string).bytes()).value(), s1));
-//    TRY(BEncoder::bencode(345363, s1));
+    auto s1 = AllocatingMemoryStream();
+
     TRY(BEncoder::bencode(info_dict, s1));
-    auto encoded_size = TRY(s1.tell());
-    dbgln("Size: {}", encoded_size);
-    for (size_t i = 0; i < encoded_size; i++) {
-        dbgln("{:c}", buffer[i]);
-    }
+    size_t buffer_size = s1.used_buffer_size();
+    auto buffer = TRY(ByteBuffer::create_uninitialized(buffer_size));
+    TRY(s1.read_until_filled(buffer.bytes()));
 
     Crypto::Hash::Manager hash;
     hash.initialize(Crypto::Hash::HashKind::SHA1);
-    hash.update(buffer.bytes().slice(0, encoded_size));
-    auto expected_sha1 = hash.digest();
-    auto expected_sha1_string = MUST(encode_base64({ expected_sha1.immutable_data(), expected_sha1.data_length() }));
-    dbgln(expected_sha1_string);
+    hash.update(buffer.bytes().slice(0, buffer_size));
+    memcpy(meta_info->m_info_hash, hash.digest().immutable_data(), 20);
 
     return *meta_info;
 }

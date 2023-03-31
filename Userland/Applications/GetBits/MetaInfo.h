@@ -8,11 +8,16 @@
 
 #include <AK/Stream.h>
 #include <AK/String.h>
+#include <AK/URL.h>
 
 class MetaInfo {
 public:
-    static ErrorOr<MetaInfo> create(SeekableStream&);
-    String announce() { return m_announce; };
+    static ErrorOr<MetaInfo> create(Stream&);
+    URL announce() { return m_announce; };
+    u8 const* info_hash() const { return m_info_hash; }
+
 private:
-    String m_announce;
+    MetaInfo() {};
+    URL m_announce;
+    u8 m_info_hash[20];
 };
