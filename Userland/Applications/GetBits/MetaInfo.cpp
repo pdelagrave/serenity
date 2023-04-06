@@ -15,12 +15,12 @@ ErrorOr<MetaInfo> MetaInfo::create(Stream& stream)
     auto meta_info = new MetaInfo();
     auto root = TRY(BDecoder::parse_bencoded(stream)).get<bencoded_dict>();
 
-    meta_info->m_announce = URL(TRY(String::from_utf8(StringView(root.get("announce"_string.release_value_but_fixme_should_propagate_errors()).value().get<ByteBuffer>().bytes()))));
+    meta_info->m_announce = URL(TRY(String::from_utf8(StringView(root.get(TRY("announce"_string)).value().get<ByteBuffer>().bytes()))));
     if (!meta_info->m_announce.is_valid()) {
         return Error::from_string_view(TRY(String::formatted("'{}' is not a valid URL", meta_info->m_announce.to_deprecated_string())).to_deprecated_string());
     }
 
-    auto info_dict = root.get("info"_string.release_value_but_fixme_should_propagate_errors()).value();
+    auto info_dict = root.get(TRY("info"_string)).value();
 
     auto s1 = AllocatingMemoryStream();
 
@@ -34,5 +34,14 @@ ErrorOr<MetaInfo> MetaInfo::create(Stream& stream)
     hash.update(buffer.bytes().slice(0, buffer_size));
     memcpy(meta_info->m_info_hash, hash.digest().immutable_data(), 20);
 
+    meta_info->m_piece_length = info_dict.get<bencoded_dict>().get(TRY("piece length"_string)).value().get<i64>();
+    meta_info->m_length = info_dict.get<bencoded_dict>().get(TRY("length"_string)).value().get<i64>();
+
     return *meta_info;
+}
+
+i64 MetaInfo::last_piece_length()
+{
+    i64 mod = m_length % m_piece_length;
+    return mod != 0 ? mod : m_piece_length;
 }

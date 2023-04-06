@@ -15,9 +15,14 @@ public:
     static ErrorOr<MetaInfo> create(Stream&);
     URL announce() { return m_announce; };
     u8 const* info_hash() const { return m_info_hash; }
+    i64 piece_length() { return m_piece_length; }
+    i64 length() { return m_length; }
+    i64 last_piece_length();
 
 private:
     MetaInfo() {};
     URL m_announce;
     u8 m_info_hash[20];
+    i64 m_piece_length;
+    i64 m_length;
 };

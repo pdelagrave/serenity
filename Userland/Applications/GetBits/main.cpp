@@ -11,12 +11,10 @@
 #include <LibGUI/Icon.h>
 #include <LibGUI/Menubar.h>
 #include <LibMain/Main.h>
-#include <stdio.h>
-#include <unistd.h>
 
 ErrorOr<int> serenity_main(Main::Arguments arguments)
 {
-    TRY(Core::System::pledge("stdio unix recvfd rpath sendfd"));
+    TRY(Core::System::pledge("stdio unix recvfd rpath sendfd inet wpath cpath"));
 
     auto app = TRY(GUI::Application::try_create(arguments));
 
@@ -25,7 +23,7 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
     auto window = TRY(GUI::Window::try_create());
     window->set_title("GetBits");
     window->resize(640, 400);
-    
+
     auto get_bits_widget = TRY(window->set_main_widget<GetBitsWidget>());
 
     get_bits_widget->initialize_menubar(*window);

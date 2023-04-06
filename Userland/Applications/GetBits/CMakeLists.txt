@@ -12,11 +12,11 @@ set(SOURCES
     BDecoder.cpp
     BEncoder.cpp
     MetaInfo.cpp
-)
+        )
 
 set(GENERATED_SOURCES
     GetBitsWindowGML.h
 )
 
 serenity_app(GetBits ICON hard-disk)
-target_link_libraries(GetBits PRIVATE LibCore LibGfx LibGUI LibDesktop LibFileSystemAccessClient LibMain LibCrypto)
+target_link_libraries(GetBits PRIVATE LibCore LibGfx LibGUI LibDesktop LibFileSystemAccessClient LibMain LibCrypto LibThreading LibProtocol LibHTTP)
