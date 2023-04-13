@@ -44,15 +44,16 @@ struct BittorrentHandshake {
 ErrorOr<void> GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> file)
 {
     dbgln("Opening file {}", filename);
-    auto meta_info = TRY(MetaInfo::create(*file));
-    i64 piece_count = AK::ceil_div(meta_info.length(), meta_info.piece_length());
+    m_meta_info = TRY(MetaInfo::create(*file));
+    TRY(generate_all_request_messages());
+    i64 piece_count = AK::ceil_div(m_meta_info->length(), m_meta_info->piece_length());
     i64 bitfield_size = AK::ceil_div(piece_count, 8L);
     m_local_bitfield = TRY(ByteBuffer::create_zeroed(bitfield_size));
     m_remote_bitfield = TRY(ByteBuffer::create_zeroed(bitfield_size));
     dbgln("piece_count: {}  bitfield_size: {}", piece_count, bitfield_size);
-    dbgln("length: {}", meta_info.length());
-    auto url = URL(meta_info.announce());
-    auto info_hash = TRY(url_encode_bytes(meta_info.info_hash(), 20));
+    dbgln("length: {}", m_meta_info->length());
+    auto url = URL(m_meta_info->announce());
+    auto info_hash = TRY(url_encode_bytes(m_meta_info->info_hash(), 20));
     // fill_with_random(m_local_peer_id_bytes, 20);
     memcpy(&m_local_peer_id_bytes, "\x57\x39\x6b\x5d\x72\xb4\x7f\x3a\x4b\x26\xcf\x84\xbf\x6b\x93\x52\x3f\x14\xf8\xca", 20);
     auto peer_id = TRY(url_encode_bytes(m_local_peer_id_bytes, 20));
@@ -72,7 +73,7 @@ ErrorOr<void> GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Cor
     Core::ProxyData proxy_data {};
     m_request = m_protocol_client->start_request("GET", url, request_headers, data.bytes(), proxy_data);
 
-    m_request->on_finish = [this, &port, &meta_info, &piece_count](bool success, auto) {
+    m_request->on_finish = [this, &port, &piece_count](bool success, auto) {
         auto maybe_error = [&]() -> ErrorOr<void> {
             if (!success)
                 dbgln("Request failed :(");
@@ -160,17 +161,20 @@ ErrorOr<void> GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Cor
                             TRY(m_socket->write_until_depleted(unchoke_message.bytes()));
 
                             // request: <len=0013><id=6><index><begin><length>
-                            auto request_message = AK::ByteBuffer();
-                            request_message.append(BigEndian<u32>(13).bytes());
-                            request_message.append((u8)MessageType::Request);
-                            request_message.append(BigEndian<u32>(0).bytes());
-                            request_message.append(BigEndian<u32>(0).bytes());
-                            auto len = min(16 * KiB, meta_info.length());
-                            request_message.append(BigEndian<u32>(len).bytes());
-                            dbgln("Sending request_message index:{} begin:{} length:{}", 0, 0, len);
-                            TRY(m_socket->write_until_depleted(request_message.bytes()));
+//                            auto request_message = AK::ByteBuffer();
+//                            request_message.append(BigEndian<u32>(13).bytes());
+//                            request_message.append((u8)MessageType::Request);
+//                            request_message.append(BigEndian<u32>(0).bytes());
+//                            request_message.append(BigEndian<u32>(0).bytes());
+//                            auto len = min(16 * KiB, m_meta_info->length());
+//                            request_message.append(BigEndian<u32>(len).bytes());
+//                            dbgln("Sending request_message index:{} begin:{} length:{}", 0, 0, len);
+//                            TRY(m_socket->write_until_depleted(request_message.bytes()));
+                            TRY(send_request_messages(24832));
                         }
-
+                        TRY(m_socket->discard(TRY(m_socket->pending_bytes())));
+                        TRY(send_request_messages(24832));
+                        return {};
                         auto pending_bytes = TRY(m_socket->pending_bytes());
                         //                        dbgln("pending_bytes: {}", pending_bytes);
                         if (pending_bytes < 4) {
@@ -229,49 +233,49 @@ ErrorOr<void> GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Cor
                             dbgln("Got message type Request, unsupported");
                             break;
                         case MessageType::Piece: {
-                            dbgln("Got message type Piece");
                             //<len=0009+X><id=7><index><begin><block>
                             auto block_size = buffer.size() - 8;
                             auto s = FixedMemoryStream(buffer.bytes());
                             auto index = TRY(s.read_value<BigEndian<u32>>());
                             auto begin = TRY(s.read_value<BigEndian<u32>>());
+                            dbgln("Received piece index {} begin {} blocksize {}", index, begin, block_size);
                             // TRY(m_file->write_until_depleted(TRY(buffer.slice(8, block_size))));
-                            u32 next_begin = begin + block_size;
-                            dbgln("next_begin: {}", next_begin);
-                            dbgln("last_piece_length: {}", meta_info.last_piece_length());
-                            dbgln("piece_length: {}", meta_info.piece_length());
-                            dbgln("piece_count: {}", piece_count);
-                            i64 piece_length = index == piece_count - 1 ? meta_info.last_piece_length() : meta_info.piece_length();
-                            dbgln("selected piece_length: {}", piece_length);
-                            i64 aa = piece_length - next_begin;
-                            dbgln("aa: {}", aa);
-                            u64 next_request_length;
-                            if (aa == 0) {
-                                index = index + 1;
-                                if (index == piece_count) {
-                                    dbgln("Done!");
-                                    m_file->close();
-                                    return {};
-                                }
-                                next_begin = 0;
-                                if (index == piece_count) {
-                                    next_request_length = (16 * KiB) % meta_info.last_piece_length();
-                                } else {
-                                    next_request_length = (16 * KiB) % piece_length;
-                                }
-                            } else {
-                                next_request_length = AK::min(16 * KiB, aa);
-                            }
-
-                            // request: <len=0013><id=6><index><begin><length>
-                            auto request_message = AK::ByteBuffer();
-                            request_message.append(BigEndian<u32>(13).bytes());
-                            request_message.append((u8)MessageType::Request);
-                            request_message.append(BigEndian<u32>(index).bytes());
-                            request_message.append(BigEndian<u32>(next_begin).bytes());
-                            request_message.append(BigEndian<u32>(next_request_length).bytes());
-                            dbgln("Sending request_message index:{} begin:{} length:{}", index, next_begin, next_request_length);
-                            TRY(m_socket->write_until_depleted(request_message.bytes()));
+//                            u32 next_begin = begin + block_size;
+//                            dbgln("next_begin: {}", next_begin);
+//                            dbgln("last_piece_length: {}", m_meta_info->last_piece_length());
+//                            dbgln("piece_length: {}", m_meta_info->piece_length());
+//                            dbgln("piece_count: {}", piece_count);
+//                            i64 piece_length = index == piece_count - 1 ? m_meta_info->last_piece_length() : m_meta_info->piece_length();
+//                            dbgln("selected piece_length: {}", piece_length);
+//                            i64 aa = piece_length - next_begin;
+//                            dbgln("aa: {}", aa);
+//                            u64 next_request_length;
+//                            if (aa == 0) {
+//                                index = index + 1;
+//                                if (index == piece_count) {
+//                                    dbgln("Done!");
+//                                    m_file->close();
+//                                    return {};
+//                                }
+//                                next_begin = 0;
+//                                if (index == piece_count) {
+//                                    next_request_length = (16 * KiB) % m_meta_info->last_piece_length();
+//                                } else {
+//                                    next_request_length = (16 * KiB) % piece_length;
+//                                }
+//                            } else {
+//                                next_request_length = AK::min(16 * KiB, aa);
+//                            }
+//
+//                            // request: <len=0013><id=6><index><begin><length>
+//                            auto request_message = AK::ByteBuffer();
+//                            request_message.append(BigEndian<u32>(13).bytes());
+//                            request_message.append((u8)MessageType::Request);
+//                            request_message.append(BigEndian<u32>(index).bytes());
+//                            request_message.append(BigEndian<u32>(next_begin).bytes());
+//                            request_message.append(BigEndian<u32>(next_request_length).bytes());
+//                            dbgln("Sending request_message index:{} begin:{} length:{}", index, next_begin, next_request_length);
+//                            TRY(m_socket->write_until_depleted(request_message.bytes()));
 
                             break;
                         }
@@ -295,7 +299,7 @@ ErrorOr<void> GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Cor
                 u8 flags[8] { 0, 0, 0, 0, 0, 0, 0, 0 };
                 //                flags[5] = flags[5] | 0x10;
                 handshake.append(flags, 8);
-                handshake.append(meta_info.info_hash(), 20);
+                handshake.append(m_meta_info->info_hash(), 20);
                 handshake.append(m_local_peer_id_bytes, 20);
                 dbgln("Sending handshake {} bytes: {}", handshake.size(), TRY(url_encode_bytes(handshake.data(), handshake.size())).replace("%"sv, ""sv, ReplaceMode::All));
                 TRY(m_socket->write_until_depleted(handshake.bytes()));
@@ -309,6 +313,43 @@ ErrorOr<void> GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Cor
 
     m_request->stream_into(*m_response_stream);
 
+    return {};
+}
+
+ErrorOr<void> GetBitsWidget::send_request_messages(u64)
+{
+//    for (u64 i = 0; i < total; i++) {
+//        TRY(m_socket->write_until_depleted(m_all_request_messages[i].bytes()));
+//    }
+    size_t send_size = AK::min(20, m_all_requests.size() - m_msg_reqs_offset);
+    if (send_size == 0)
+        return {};
+    dbgln("Sending {} bytes of request messages ({}/{})", send_size, m_msg_reqs_offset, m_all_requests.size());
+    TRY(m_socket->write_until_depleted(Bytes {m_all_requests.data() + m_msg_reqs_offset, send_size}));
+    m_msg_reqs_offset += send_size;
+    return {};
+}
+
+ErrorOr<void> GetBitsWidget::generate_all_request_messages()
+{
+    // request: <len=0013><id=6><index><begin><length>
+    u64 request_count = AK::ceil_div(m_meta_info->length(), BlockLength);
+    i64 piece_count = AK::ceil_div(m_meta_info->length(), m_meta_info->piece_length());
+    u64 message_per_piece = request_count / piece_count;
+    dbgln("Request count: {}, piece_count: {} message_per_piece: {}", request_count, piece_count, message_per_piece);
+
+    for (u64 i = 0; i < request_count; i++) {
+        u64 current_piece = (i * BlockLength) / m_meta_info->piece_length();
+
+        auto request_message = ByteBuffer();
+        request_message.append(BigEndian<u32>(13).bytes());
+        request_message.append((u8)MessageType::Request);
+        request_message.append(BigEndian<u32>(current_piece).bytes());
+        request_message.append(BigEndian<u32>((i % message_per_piece) * BlockLength).bytes());
+        request_message.append(BigEndian<u32>(BlockLength).bytes());
+        m_all_request_messages.append(request_message);
+        m_all_requests.append(request_message);
+    }
     return {};
 }
 
@@ -334,9 +375,4 @@ GetBitsWidget::GetBitsWidget()
 
     m_toolbar->add_action(*m_open_action);
     m_response_stream = new AllocatingMemoryStream();
-}
-
-void GetBitsWidget::custom_event(Core::CustomEvent& event)
-{
-    Object::custom_event(event);
 }

@@ -10,7 +10,7 @@
 #include <AK/MemoryStream.h>
 #include <LibCrypto/Hash/HashManager.h>
 
-ErrorOr<MetaInfo> MetaInfo::create(Stream& stream)
+ErrorOr<MetaInfo*> MetaInfo::create(Stream& stream)
 {
     auto meta_info = new MetaInfo();
     auto root = TRY(BDecoder::parse_bencoded(stream)).get<bencoded_dict>();
@@ -37,7 +37,7 @@ ErrorOr<MetaInfo> MetaInfo::create(Stream& stream)
     meta_info->m_piece_length = info_dict.get<bencoded_dict>().get(TRY("piece length"_string)).value().get<i64>();
     meta_info->m_length = info_dict.get<bencoded_dict>().get(TRY("length"_string)).value().get<i64>();
 
-    return *meta_info;
+    return meta_info;
 }
 
 i64 MetaInfo::last_piece_length()

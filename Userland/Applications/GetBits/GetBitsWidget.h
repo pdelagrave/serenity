@@ -8,7 +8,11 @@
 
 #include "LibCore/Socket.h"
 #include "LibGUI/Widget.h"
+#include "MetaInfo.h"
 #include <LibProtocol/Request.h>
+
+// Block is a part of a piece
+constexpr u64 BlockLength = 16 * KiB;
 
 enum class MessageType : u8 {
     Choke = 0x00,
@@ -29,19 +33,23 @@ public:
     ErrorOr<void> open_file(String const& filename, NonnullOwnPtr<Core::File>);
     void initialize_menubar(GUI::Window&);
 
-protected:
-    void custom_event(Core::CustomEvent& event) override;
-
 private:
     GetBitsWidget();
     OwnPtr<Core::File> m_file;
+    MetaInfo* m_meta_info;
     ByteBuffer m_local_bitfield;
     ByteBuffer m_remote_bitfield;
     bool m_remote_choked = true;
     u32 m_waiting_for = 0;
     u8 m_local_peer_id_bytes[20];
     Core::TCPSocket* m_socket;
+    size_t m_msg_reqs_offset = 0;
     bool m_gothandshake = false;
+
+    ErrorOr<void> generate_all_request_messages();
+    AK::Vector<ByteBuffer> m_all_request_messages;
+    ByteBuffer m_all_requests;
+    ErrorOr<void> send_request_messages(u64);
 
     static ErrorOr<String> url_encode_bytes(u8 const*, size_t);
     static ErrorOr<String> hexdump(Bytes);
