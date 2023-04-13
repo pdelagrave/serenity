@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include "GetBitsWidget.h"
+#include "BitsWidget.h"
 #include <LibCore/System.h>
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Application.h>
@@ -21,10 +21,10 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
     auto app_icon = TRY(GUI::Icon::try_create_default_icon("hard-disk"sv));
 
     auto window = TRY(GUI::Window::try_create());
-    window->set_title("GetBits");
+    window->set_title("Bits");
     window->resize(640, 400);
 
-    auto get_bits_widget = TRY(window->set_main_widget<GetBitsWidget>());
+    auto get_bits_widget = TRY(window->set_main_widget<BitsWidget>());
 
     get_bits_widget->initialize_menubar(*window);
     window->show();

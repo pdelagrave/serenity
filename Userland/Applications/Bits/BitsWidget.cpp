@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include "GetBitsWidget.h"
+#include "BitsWidget.h"
 #include "BDecoder.h"
 #include "MetaInfo.h"
-#include <Applications/GetBits/GetBitsWindowGML.h>
+#include <Applications/Bits/BitsWindowGML.h>
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>
 #include <LibGUI/Toolbar.h>
@@ -15,7 +15,7 @@
 #include <LibProtocol/RequestClient.h>
 #include <string.h>
 
-ErrorOr<String> GetBitsWidget::url_encode_bytes(u8 const* bytes, size_t length)
+ErrorOr<String> BitsWidget::url_encode_bytes(u8 const* bytes, size_t length)
 {
     StringBuilder builder;
     for (size_t i = 0; i < length; ++i) {
@@ -24,7 +24,7 @@ ErrorOr<String> GetBitsWidget::url_encode_bytes(u8 const* bytes, size_t length)
     return builder.to_string();
 }
 
-ErrorOr<String> GetBitsWidget::hexdump(Bytes bytes)
+ErrorOr<String> BitsWidget::hexdump(Bytes bytes)
 {
     StringBuilder builder;
     for (size_t i = 0; i < bytes.size(); ++i) {
@@ -41,7 +41,7 @@ struct BittorrentHandshake {
     u8 peer_id[20];
 };
 
-ErrorOr<void> GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> file)
+ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> file)
 {
     dbgln("Opening file {}", filename);
     m_meta_info = TRY(MetaInfo::create(*file));
@@ -316,7 +316,7 @@ ErrorOr<void> GetBitsWidget::open_file(String const& filename, NonnullOwnPtr<Cor
     return {};
 }
 
-ErrorOr<void> GetBitsWidget::send_request_messages(u64)
+ErrorOr<void> BitsWidget::send_request_messages(u64)
 {
 //    for (u64 i = 0; i < total; i++) {
 //        TRY(m_socket->write_until_depleted(m_all_request_messages[i].bytes()));
@@ -330,7 +330,7 @@ ErrorOr<void> GetBitsWidget::send_request_messages(u64)
     return {};
 }
 
-ErrorOr<void> GetBitsWidget::generate_all_request_messages()
+ErrorOr<void> BitsWidget::generate_all_request_messages()
 {
     // request: <len=0013><id=6><index><begin><length>
     u64 request_count = AK::ceil_div(m_meta_info->length(), BlockLength);
@@ -353,13 +353,13 @@ ErrorOr<void> GetBitsWidget::generate_all_request_messages()
     return {};
 }
 
-void GetBitsWidget::initialize_menubar(GUI::Window& window)
+void BitsWidget::initialize_menubar(GUI::Window& window)
 {
     auto& file_menu = window.add_menu("&File");
     file_menu.add_action(*m_open_action);
 }
 
-GetBitsWidget::GetBitsWidget()
+BitsWidget::BitsWidget()
 {
     load_from_gml(get_bits_window_gml).release_value_but_fixme_should_propagate_errors();
 

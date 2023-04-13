@@ -26,15 +26,15 @@ enum class MessageType : u8 {
     Cancel = 0x08,
 };
 
-class GetBitsWidget final : public GUI::Widget {
-    C_OBJECT(GetBitsWidget)
+class BitsWidget final : public GUI::Widget {
+    C_OBJECT(BitsWidget)
 public:
-    virtual ~GetBitsWidget() override = default;
+    virtual ~BitsWidget() override = default;
     ErrorOr<void> open_file(String const& filename, NonnullOwnPtr<Core::File>);
     void initialize_menubar(GUI::Window&);
 
 private:
-    GetBitsWidget();
+    BitsWidget();
     OwnPtr<Core::File> m_file;
     MetaInfo* m_meta_info;
     ByteBuffer m_local_bitfield;
