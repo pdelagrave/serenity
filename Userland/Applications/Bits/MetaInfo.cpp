@@ -9,7 +9,7 @@
 #include "BEncoder.h"
 #include <AK/MemoryStream.h>
 #include <LibCrypto/Hash/HashManager.h>
-
+namespace Bits {
 ErrorOr<MetaInfo*> MetaInfo::create(Stream& stream)
 {
     auto meta_info = new MetaInfo();
@@ -44,4 +44,5 @@ i64 MetaInfo::last_piece_length()
 {
     i64 mod = m_length % m_piece_length;
     return mod != 0 ? mod : m_piece_length;
+}
 }

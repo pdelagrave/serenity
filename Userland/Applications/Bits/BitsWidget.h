@@ -11,6 +11,7 @@
 #include "MetaInfo.h"
 #include <LibProtocol/Request.h>
 
+namespace Bits {
 // Block is a part of a piece
 constexpr u64 BlockLength = 16 * KiB;
 
@@ -59,3 +60,4 @@ private:
     RefPtr<GUI::Toolbar> m_toolbar;
     RefPtr<Protocol::RequestClient> m_protocol_client;
 };
+}

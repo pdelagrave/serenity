@@ -9,7 +9,7 @@
 #include <AK/Stream.h>
 #include <AK/String.h>
 #include <AK/URL.h>
-
+namespace Bits {
 class MetaInfo {
 public:
     static ErrorOr<MetaInfo*> create(Stream&);
@@ -26,3 +26,4 @@ private:
     i64 m_piece_length;
     i64 m_length;
 };
+}

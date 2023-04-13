@@ -24,7 +24,7 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
     window->set_title("Bits");
     window->resize(640, 400);
 
-    auto get_bits_widget = TRY(window->set_main_widget<BitsWidget>());
+    auto get_bits_widget = TRY(window->set_main_widget<Bits::BitsWidget>());
 
     get_bits_widget->initialize_menubar(*window);
     window->show();

@@ -6,15 +6,16 @@
 
 #include "BEncoder.h"
 
+namespace Bits {
 ErrorOr<void> BEncoder::bencode(BEncodingType object, Stream& stream)
 {
     return object.visit(
         [&](ByteBuffer string) -> ErrorOr<void> {
-                  TRY(stream.write_until_depleted(TRY(String::number(string.size())).bytes()));
-                  TRY(stream.write_value<u8>(':'));
-                  TRY(stream.write_until_depleted(string.bytes()));
-                  return {};
-              },
+            TRY(stream.write_until_depleted(TRY(String::number(string.size())).bytes()));
+            TRY(stream.write_value<u8>(':'));
+            TRY(stream.write_until_depleted(string.bytes()));
+            return {};
+        },
         [&](i64 number) -> ErrorOr<void> {
             TRY(stream.write_value<u8>('i'));
             TRY(stream.write_until_depleted(TRY(String::number(number)).bytes()));
@@ -34,4 +35,5 @@ ErrorOr<void> BEncoder::bencode(BEncodingType object, Stream& stream)
             TRY(stream.write_value<u8>('e'));
             return {};
         });
+}
 }

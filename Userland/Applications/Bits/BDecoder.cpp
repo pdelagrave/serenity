@@ -8,16 +8,18 @@
 
 // Reference: The 'bencoding' section of https://www.bittorrent.org/beps/bep_0003.html
 
+namespace Bits {
 static constexpr bool is_digit(char c)
 {
     return c <= '9' && c >= '0';
 }
 
-ErrorOr<BEncodingType> BDecoder::parse_bencoded(Stream& stream) {
+ErrorOr<BEncodingType> BDecoder::parse_bencoded(Stream& stream)
+{
     return parse_bencoded(stream, nullptr);
 }
 
-ErrorOr<BEncodingType> BDecoder::parse_bencoded(Stream& stream, const u8* byte_already_read)
+ErrorOr<BEncodingType> BDecoder::parse_bencoded(Stream& stream, u8* byte_already_read)
 {
     const u8 next_byte = byte_already_read != nullptr ? *byte_already_read : TRY(stream.read_value<u8>());
     if (next_byte == 'i') {
@@ -104,4 +106,6 @@ ErrorOr<bencoded_list> BDecoder::parse_list(Stream& stream)
         list.append(TRY(parse_bencoded(stream, &next_byte)));
     }
     return list;
+}
+
 }

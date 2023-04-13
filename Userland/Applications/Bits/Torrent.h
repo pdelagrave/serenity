@@ -6,12 +6,9 @@
 
 #pragma once
 
-#include "AK/Types.h"
-#include "BDecoder.h"
-#include <AK/Stream.h>
 namespace Bits {
-class BEncoder {
-public:
-    static ErrorOr<void> bencode(BEncodingType, Stream&);
+
+class Torrent {
 };
+
 }
