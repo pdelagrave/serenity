@@ -12,6 +12,8 @@ set(SOURCES
     BDecoder.cpp
     BEncoder.cpp
     MetaInfo.cpp
+    Torrent.cpp
+    TorrentModel.cpp
         )
 
 set(GENERATED_SOURCES

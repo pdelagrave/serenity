@@ -1,0 +1,52 @@
+/*
+ * Copyright (c) 2023, Pierre Delagrave <pierre.delagrave@gmail.com>
+ *
+ * SPDX-License-Identifier: BSD-2-Clause
+ */
+
+#include "TorrentModel.h"
+#include <AK/NumberFormat.h>
+
+namespace Bits {
+int TorrentModel::row_count(GUI::ModelIndex const&) const
+{
+    return m_torrents.size();
+}
+int TorrentModel::column_count(GUI::ModelIndex const&) const
+{
+    return m_columns.size();
+}
+GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole role) const
+{
+    if (role != GUI::ModelRole::Display)
+        return {};
+    if (!is_within_range(index))
+        return {};
+
+    auto torrent = m_torrents.at(index.row());
+    MetaInfo& meta_info = torrent->meta_info();
+    if (index.column() == 0)
+        return meta_info.filename();
+    else if (index.column() == 1)
+        return AK::human_readable_quantity(meta_info.length());
+    else if (index.column() == 2)
+        return state_to_string(torrent->state()).release_value_but_fixme_should_propagate_errors();
+    else if (index.column() == 3)
+        return "0%"_string.release_value_but_fixme_should_propagate_errors();
+    else if (index.column() == 4)
+        return torrent->data_path();
+    else
+        return "??";
+}
+
+void TorrentModel::update()
+{
+    m_torrents = m_get_updated_torrent_list();
+    did_update(UpdateFlag::DontInvalidateIndices);
+}
+DeprecatedString TorrentModel::column_name(int i) const
+{
+    return m_columns.at(i).to_deprecated_string();
+}
+
+}

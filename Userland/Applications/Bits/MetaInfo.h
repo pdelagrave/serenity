@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "BDecoder.h"
 #include <AK/Stream.h>
 #include <AK/String.h>
 #include <AK/URL.h>
@@ -18,12 +19,15 @@ public:
     i64 piece_length() { return m_piece_length; }
     i64 length() { return m_length; }
     i64 last_piece_length();
+    String filename() { return m_file; }
 
 private:
     MetaInfo() {};
+    static ErrorOr<String> read_string(bencoded_dict&, ErrorOr<String>);
     URL m_announce;
     u8 m_info_hash[20];
     i64 m_piece_length;
     i64 m_length;
+    String m_file;
 };
 }
