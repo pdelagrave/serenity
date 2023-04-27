@@ -14,6 +14,8 @@ set(SOURCES
     MetaInfo.cpp
     Torrent.cpp
     TorrentModel.cpp
+    Engine.cpp
+    Command.cpp
         )
 
 set(GENERATED_SOURCES

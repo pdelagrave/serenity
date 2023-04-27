@@ -19,6 +19,7 @@ public:
     GUI::Variant data(GUI::ModelIndex const& index, GUI::ModelRole role) const override;
     DeprecatedString column_name(int i) const override;
 
+
     static NonnullRefPtr<TorrentModel> create(TorrentListCallback callback)
     {
         return adopt_ref(*new TorrentModel(move(callback)));

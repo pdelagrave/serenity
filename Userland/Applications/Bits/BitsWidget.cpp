@@ -5,14 +5,17 @@
  */
 
 #include "BitsWidget.h"
+#include "Command.h"
+#include "Engine.h"
 #include "MetaInfo.h"
 #include "Torrent.h"
 #include <Applications/Bits/BitsWindowGML.h>
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>
-#include <LibGUI/SortingProxyModel.h>
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Menu.h>
+#include <LibGUI/MessageBox.h>
+#include <LibGUI/SortingProxyModel.h>
 
 namespace Bits {
 
@@ -21,7 +24,7 @@ ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::
     dbgln("Opening file {}", filename);
     auto meta_info = TRY(adopt_nonnull_own_or_enomem(TRY(MetaInfo::create(*file))));
     file->close();
-    m_torrents.append(TRY(adopt_nonnull_ref_or_enomem(new (nothrow) Torrent(move(meta_info), TRY("/home/anon/Downloads"_string)))));
+    m_engine->post(TRY(adopt_nonnull_own_or_enomem(new AddTorrent(move(meta_info), "/home/anon/Downloads"_string.release_value()))));
 
     return {};
 }
@@ -33,7 +36,11 @@ void BitsWidget::initialize_menubar(GUI::Window& window)
 }
 
 BitsWidget::BitsWidget()
+    : m_engine(*new Engine())
 {
+    m_engine_thread = Threading::Thread::construct([this]() { return m_engine->start(); });
+    m_engine_thread->start();
+
     load_from_gml(get_bits_window_gml).release_value_but_fixme_should_propagate_errors();
     set_layout<GUI::VerticalBoxLayout>();
 
@@ -47,20 +54,41 @@ BitsWidget::BitsWidget()
             err.release_error();
     });
 
-    m_torrent_model = TorrentModel::create([this] { return get_torrents(); });
+    auto start_torrent_action = GUI::Action::create("Start",
+        [&](GUI::Action&) {
+            m_torrents_table_view->selection().for_each_index([&](GUI::ModelIndex const& index) {
+                m_engine->post(adopt_nonnull_own_or_enomem(new StartTorrent(index.row())).release_value());
+            });
+        });
+
+    auto stop_torrent_action = GUI::Action::create("Stop",
+        [&](GUI::Action&) {
+            m_torrents_table_view->selection().for_each_index([&](GUI::ModelIndex const& index) {
+                m_engine->post(adopt_nonnull_own_or_enomem(new StopTorrent(index.row())).release_value());
+            });
+        });
+
+    m_torrent_model = TorrentModel::create([this] { return m_engine->torrents(); });
     m_torrents_table_view = *find_descendant_of_type_named<GUI::TableView>("torrent_table");
     m_torrents_table_view->set_model(m_torrent_model);
+    m_torrents_table_view->set_selection_mode(GUI::AbstractView::SelectionMode::MultiSelection);
+    m_torrents_table_view->on_context_menu_request = [this, start_torrent_action, stop_torrent_action](const GUI::ModelIndex& model_index, const GUI::ContextMenuEvent& event) {
+        if (model_index.is_valid()) {
+            m_torrent_context_menu = GUI::Menu::construct();
+            if (m_engine->torrents().at(model_index.row())->state() == TorrentState::STOPPED)
+                m_torrent_context_menu->add_action(start_torrent_action);
+            else
+                m_torrent_context_menu->add_action(stop_torrent_action);
+
+            m_torrent_context_menu->popup(event.screen_position());
+        }
+    };
 
     m_update_timer = add<Core::Timer>(
         500, [this] {
             this->m_torrent_model->update();
         });
     m_update_timer->start();
-}
-
-Vector<NonnullRefPtr<Torrent>> BitsWidget::get_torrents()
-{
-    return m_torrents;
 }
 
 }

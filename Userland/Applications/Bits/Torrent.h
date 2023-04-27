@@ -21,6 +21,7 @@ public:
     Torrent(NonnullOwnPtr<MetaInfo>, String const&);
     MetaInfo& meta_info() { return *m_meta_info; }
     TorrentState state() { return m_state; }
+    void set_state(TorrentState state) { m_state = state; }
     String data_path() { return m_data_path; }
 
 private:
