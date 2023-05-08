@@ -31,7 +31,7 @@ ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::
 
 void BitsWidget::initialize_menubar(GUI::Window& window)
 {
-    auto& file_menu = window.add_menu("&File");
+    auto& file_menu = window.add_menu("&File"_string.release_value());
     file_menu.add_action(*m_open_action);
 }
 

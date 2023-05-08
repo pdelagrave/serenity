@@ -32,7 +32,7 @@ void Engine::custom_event(Core::CustomEvent& event)
 }
 void Engine::post(NonnullOwnPtr<Command> command)
 {
-    m_event_loop->post_event(*this, make<CommandEvent>(move(command)), Core::EventLoop::ShouldWake::Yes);
+    m_event_loop->post_event(*this, make<CommandEvent>(move(command)));
 }
 
 }

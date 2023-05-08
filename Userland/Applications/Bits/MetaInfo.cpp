@@ -19,7 +19,7 @@ ErrorOr<MetaInfo*> MetaInfo::create(Stream& stream)
 
     meta_info->m_announce = URL(TRY(read_string(root, "announce"_string)));
     if (!meta_info->m_announce.is_valid()) {
-        return Error::from_string_view(TRY(String::formatted("'{}' is not a valid URL", meta_info->m_announce.to_deprecated_string())).to_deprecated_string());
+        return Error::from_string_view(TRY(String::formatted("'{}' is not a valid URL", meta_info->m_announce)).bytes_as_string_view());
     }
 
     auto info_dict = root.get(TRY("info"_string)).value().get<bencoded_dict>();
