@@ -6,12 +6,16 @@
 
 #pragma once
 
-#include "BDecoder.h"
-#include <AK/Stream.h>
+#include <AK/IPv4Address.h>
 #include <AK/Types.h>
+
 namespace Bits {
-class BEncoder {
-public:
-    static ErrorOr<void> bencode(BEncodingType, Stream&);
+
+class Peer {
+private:
+    u8 id[20];
+    IPv4Address address;
+    u16 port;
 };
+
 }

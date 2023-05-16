@@ -35,12 +35,9 @@ void BitsWidget::initialize_menubar(GUI::Window& window)
     file_menu.add_action(*m_open_action);
 }
 
-BitsWidget::BitsWidget()
-    : m_engine(*new Engine())
+BitsWidget::BitsWidget(NonnullRefPtr<Engine> engine)
+    : m_engine(move(engine))
 {
-    m_engine_thread = Threading::Thread::construct([this]() { return m_engine->start(); });
-    m_engine_thread->start();
-
     load_from_gml(get_bits_window_gml).release_value_but_fixme_should_propagate_errors();
     set_layout<GUI::VerticalBoxLayout>();
 

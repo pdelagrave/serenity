@@ -7,7 +7,7 @@ serenity_component(
 compile_gml(BitsWindow.gml BitsWindowGML.h get_bits_window_gml)
 
 set(SOURCES
-        BitsWidget.cpp
+    BitsWidget.cpp
     main.cpp
     BDecoder.cpp
     BEncoder.cpp
@@ -16,6 +16,7 @@ set(SOURCES
     TorrentModel.cpp
     Engine.cpp
     Command.cpp
+    Peer.cpp
         )
 
 set(GENERATED_SOURCES

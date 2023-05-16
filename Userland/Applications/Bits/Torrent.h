@@ -6,8 +6,10 @@
 
 #pragma once
 
-#include "AK/NonnullOwnPtr.h"
 #include "MetaInfo.h"
+#include "Peer.h"
+#include <AK/NonnullOwnPtr.h>
+
 namespace Bits {
 
 enum class TorrentState {
@@ -28,6 +30,8 @@ private:
     NonnullOwnPtr<MetaInfo> m_meta_info;
     String m_data_path;
     TorrentState m_state;
+
+    Vector<Peer> m_peers;
 };
 
 }

@@ -7,11 +7,10 @@
 #pragma once
 
 #include "Engine.h"
-#include "LibGUI/Widget.h"
-#include "LibThreading/Thread.h"
 #include "Torrent.h"
 #include "TorrentModel.h"
 #include <LibGUI/TableView.h>
+#include <LibGUI/Widget.h>
 
 namespace Bits {
 
@@ -23,7 +22,7 @@ public:
     void initialize_menubar(GUI::Window&);
 
 private:
-    BitsWidget();
+    BitsWidget(NonnullRefPtr<Engine>);
     RefPtr<GUI::Action> m_open_action;
     RefPtr<GUI::Menu> m_torrent_context_menu;
 
@@ -31,7 +30,6 @@ private:
     RefPtr<TorrentModel> m_torrent_model;
     RefPtr<Core::Timer> m_update_timer;
 
-    RefPtr<Threading::Thread> m_engine_thread;
     NonnullRefPtr<Engine> m_engine;
 };
 }

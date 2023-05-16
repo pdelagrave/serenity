@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "LibGUI/Model.h"
 #include "Torrent.h"
+#include <LibGUI/Model.h>
 namespace Bits {
 
 using TorrentListCallback = Function<Vector<NonnullRefPtr<Torrent>>()>;
@@ -17,8 +17,7 @@ public:
     int row_count(GUI::ModelIndex const& index) const override;
     int column_count(GUI::ModelIndex const& index) const override;
     GUI::Variant data(GUI::ModelIndex const& index, GUI::ModelRole role) const override;
-    DeprecatedString column_name(int i) const override;
-
+    String column_name(int i) const override;
 
     static NonnullRefPtr<TorrentModel> create(TorrentListCallback callback)
     {

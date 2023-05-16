@@ -9,14 +9,10 @@
 // Reference: The 'bencoding' section of https://www.bittorrent.org/beps/bep_0003.html
 
 namespace Bits {
+
 static constexpr bool is_digit(char c)
 {
     return c <= '9' && c >= '0';
-}
-
-ErrorOr<BEncodingType> BDecoder::parse_bencoded(Stream& stream)
-{
-    return parse_bencoded(stream, nullptr);
 }
 
 ErrorOr<BEncodingType> BDecoder::parse_bencoded(Stream& stream, u8* byte_already_read)
@@ -80,27 +76,27 @@ ErrorOr<ByteBuffer> BDecoder::parse_byte_array(Stream& stream, u8 first_byte)
     return buffer;
 }
 
-ErrorOr<bencoded_dict> BDecoder::parse_dictionary(Stream& stream)
+ErrorOr<Dict> BDecoder::parse_dictionary(Stream& stream)
 {
-    auto dict = bencoded_dict();
-    auto previous_key = m_empty_string;
+    auto dict = Dict();
+    auto previous_key = DeprecatedString::empty();
     u8 next_byte;
     while ((next_byte = TRY(stream.read_value<u8>())) != 'e') {
         auto buffer = TRY(parse_byte_array(stream, next_byte)); // key is always expected to be a byte array (string).
-        auto key = TRY(String::from_utf8(StringView(buffer.bytes())));
+        auto key = TRY(DeprecatedString::from_utf8(buffer.bytes()));
         if (key < previous_key)
             warnln("Invalid dictionary: entries key must be sorted"); // but many trackers don't sort them.
-        BEncodingType const& value = TRY(parse_bencoded(stream));
+        BEncodingType const& value = TRY(parse_bencoded(stream, nullptr));
         dict.set(key, value);
         previous_key = key;
     }
     return dict;
 }
 
-ErrorOr<bencoded_list> BDecoder::parse_list(Stream& stream)
+ErrorOr<List> BDecoder::parse_list(Stream& stream)
 {
     // TODO: check if items are all the same type
-    auto list = bencoded_list();
+    auto list = List();
     u8 next_byte;
     while ((next_byte = TRY(stream.read_value<u8>())) != 'e') {
         list.append(TRY(parse_bencoded(stream, &next_byte)));

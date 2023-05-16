@@ -44,9 +44,9 @@ void TorrentModel::update()
     m_torrents = m_get_updated_torrent_list();
     did_update(UpdateFlag::DontInvalidateIndices);
 }
-DeprecatedString TorrentModel::column_name(int i) const
+String TorrentModel::column_name(int i) const
 {
-    return m_columns.at(i).to_deprecated_string();
+    return m_columns.at(i);
 }
 
 }
