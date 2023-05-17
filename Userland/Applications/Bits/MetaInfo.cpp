@@ -16,6 +16,7 @@ ErrorOr<MetaInfo*> MetaInfo::create(Stream& stream)
     auto meta_info = new MetaInfo();
     auto root = TRY(BDecoder::parse<Dict>(stream));
 
+    // TODO: support tracker-less torrent (DHT), some torrent files have no announce url.
     meta_info->m_announce = URL(root.get_string("announce"));
     if (!meta_info->m_announce.is_valid()) {
         return Error::from_string_view(TRY(String::formatted("'{}' is not a valid URL", meta_info->m_announce)).bytes_as_string_view());
@@ -36,16 +37,35 @@ ErrorOr<MetaInfo*> MetaInfo::create(Stream& stream)
     memcpy(meta_info->m_info_hash, hash.digest().immutable_data(), 20);
 
     meta_info->m_piece_length = info_dict.get<i64>("piece length");
-    meta_info->m_length = info_dict.get<i64>("length");
-    meta_info->m_file = info_dict.get_string("name");
+    if (info_dict.contains("length")) {
+        // single file mode
+        meta_info->m_files.append(File(info_dict.get_string("name"), info_dict.get<i64>("length")));
+        meta_info->m_total_length = info_dict.get<i64>("length");
+    } else {
+        // multi file mode
+        meta_info->m_root_dir_name = info_dict.get_string("name");
+        auto files = info_dict.get<List>("files");
+        for (auto& file : files) {
+            auto file_dict = file.get<Dict>();
+            auto path = file_dict.get<List>("path");
+            StringBuilder path_builder;
+            for (auto path_element : path) {
+                path_builder.append(TRY(DeprecatedString::from_utf8(path_element.get<ByteBuffer>().bytes())));
+                path_builder.append('/');
+            }
+            path_builder.trim(1);
+            i64 length = file_dict.get<i64>("length");
+            meta_info->m_files.append(File(path_builder.to_deprecated_string(), length));
+            meta_info->m_total_length += length;
+            dbgln("path: {}, length: {}, totallength: {}", path_builder.to_string().release_value(), length, meta_info->m_total_length);
+        }
+    }
 
     return meta_info;
 }
-
-i64 MetaInfo::last_piece_length()
+i64 MetaInfo::total_length()
 {
-    i64 mod = m_length % m_piece_length;
-    return mod != 0 ? mod : m_piece_length;
+    return m_total_length;
 }
 
 }

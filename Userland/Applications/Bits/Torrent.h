@@ -25,6 +25,7 @@ public:
     TorrentState state() { return m_state; }
     void set_state(TorrentState state) { m_state = state; }
     String data_path() { return m_data_path; }
+    Vector<Peer> peers() { return m_peers; }
 
 private:
     NonnullOwnPtr<MetaInfo> m_meta_info;

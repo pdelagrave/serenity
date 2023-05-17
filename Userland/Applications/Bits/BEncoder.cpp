@@ -22,8 +22,12 @@ ErrorOr<void> BEncoder::bencode(BEncodingType object, Stream& stream)
             TRY(stream.write_value<u8>('e'));
             return {};
         },
-        [&](List) -> ErrorOr<void> {
-            TODO();
+        [&](List list) -> ErrorOr<void> {
+            TRY(stream.write_value<u8>('l'));
+            for (auto const& item : list) {
+                TRY(bencode(item, stream));
+            }
+            TRY(stream.write_value<u8>('e'));
             return {};
         },
         [&](Dict dict) -> ErrorOr<void> {

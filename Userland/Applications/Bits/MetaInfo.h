@@ -13,22 +13,36 @@
 
 namespace Bits {
 
+class File {
+public:
+    File(DeprecatedString path, i64 length)
+        : m_path(path)
+        , m_length(length) {};
+    DeprecatedString path() { return m_path; };
+    i64 length() { return m_length; };
+
+private:
+    const DeprecatedString m_path;
+    const i64 m_length;
+};
+
 class MetaInfo {
 public:
     static ErrorOr<MetaInfo*> create(Stream&);
     URL announce() { return m_announce; };
     u8 const* info_hash() const { return m_info_hash; }
     i64 piece_length() { return m_piece_length; }
-    i64 length() { return m_length; }
-    i64 last_piece_length();
-    DeprecatedString filename() { return m_file; }
+    Vector<File> files() { return m_files; }
+
+    i64 total_length();
 
 private:
     MetaInfo() {};
     URL m_announce;
     u8 m_info_hash[20];
     i64 m_piece_length;
-    i64 m_length;
-    DeprecatedString m_file;
+    Vector<File> m_files;
+    DeprecatedString m_root_dir_name;
+    i64 m_total_length = 0;
 };
 }
