@@ -22,7 +22,6 @@ public:
     };
     static ErrorOr<NonnullRefPtr<Engine>> try_create();
 
-    int start();
     Vector<NonnullRefPtr<Torrent>> torrents() { return m_torrents; }
     void post(NonnullOwnPtr<Command>);
 
@@ -32,9 +31,9 @@ private:
     static ErrorOr<String> hexdump(ReadonlyBytes);
 
     NonnullRefPtr<Protocol::RequestClient> m_protocol_client;
+    HashTable<NonnullRefPtr<Protocol::Request>> m_active_requests;
 
     Vector<NonnullRefPtr<Torrent>> m_torrents;
-    OwnPtr<Core::EventLoop> m_event_loop;
     ErrorOr<void> announce(Torrent&);
 
 protected:

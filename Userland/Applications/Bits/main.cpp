@@ -12,7 +12,6 @@
 #include <LibGUI/Icon.h>
 #include <LibGUI/Menubar.h>
 #include <LibMain/Main.h>
-#include <LibThreading/Thread.h>
 
 ErrorOr<int> serenity_main(Main::Arguments arguments)
 {
@@ -27,8 +26,6 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
     window->resize(640, 400);
 
     auto engine = TRY(Bits::Engine::try_create());
-    auto engine_thread = Threading::Thread::construct([engine]() { return engine->start(); });
-    engine_thread->start();
 
     auto bits_widget = TRY(window->set_main_widget<Bits::BitsWidget>(engine));
 

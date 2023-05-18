@@ -5,17 +5,10 @@
  */
 
 #include "Engine.h"
-#include <AK/Format.h>
 #include <LibCore/EventLoop.h>
 #include <LibProtocol/Request.h>
 
 namespace Bits {
-
-int Engine::start()
-{
-    m_event_loop = make<Core::EventLoop>();
-    return m_event_loop->exec();
-}
 
 void Engine::custom_event(Core::CustomEvent& event)
 {
@@ -43,7 +36,7 @@ void Engine::custom_event(Core::CustomEvent& event)
 }
 void Engine::post(NonnullOwnPtr<Command> command)
 {
-    m_event_loop->post_event(*this, make<CommandEvent>(move(command)));
+    Core::EventLoop::current().post_event(*this, make<CommandEvent>(move(command)));
 }
 
 ErrorOr<String> Engine::url_encode_bytes(u8 const* bytes, size_t length)
@@ -59,7 +52,8 @@ ErrorOr<void> Engine::announce(Torrent& torrent)
 {
     auto info_hash = TRY(url_encode_bytes(torrent.meta_info().info_hash(), 20));
     u8 m_local_peer_id_bytes[20];
-    memcpy(&m_local_peer_id_bytes, "\x57\x39\x6b\x5d\x72\xb4\x7f\x3a\x4b\x26\xcf\x84\xbf\x6b\x93\x52\x3f\x14\xf8\xca", 20);
+    // memcpy(&m_local_peer_id_bytes, "\x57\x39\x6b\x5d\x72\xb4\x7f\x3a\x4b\x26\xcf\x84\xbf\x6b\x93\x52\x3f\x14\xf8\xca", 20);
+    fill_with_random(Span<u8>(m_local_peer_id_bytes, 20));
     auto my_peer_id = TRY(url_encode_bytes(m_local_peer_id_bytes, 20));
     auto my_port = 27007;
     auto url = URL(torrent.meta_info().announce());
@@ -69,8 +63,10 @@ ErrorOr<void> Engine::announce(Torrent& torrent)
     u64 key = get_random<u64>();
 
     url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&compact=0&uploaded=1&downloaded=1&left=2&key={}", info_hash, my_peer_id, my_port, key)).to_deprecated_string());
-    auto r = m_protocol_client->start_request("GET", url);
-    r->on_buffered_request_finish = [&torrent, &my_peer_id](bool success, auto total_size, auto&, auto status_code, ReadonlyBytes payload) {
+    auto request = m_protocol_client->start_request("GET", url);
+    m_active_requests.set(*request);
+
+    request->on_buffered_request_finish = [this, &torrent, &request = *request](bool success, auto total_size, auto&, auto status_code, ReadonlyBytes payload) {
         auto err = [&]() -> ErrorOr<void> {
             dbgln("We got back the payload, size: {}, success: {}, status_code: {}, torrent state: {}", total_size, success, status_code, state_to_string(torrent.state()));
             auto response = TRY(BDecoder::parse<Dict>(payload));
@@ -86,8 +82,10 @@ ErrorOr<void> Engine::announce(Torrent& torrent)
 
             for (auto peer : peers) {
                 auto peer_dict = peer.get<Dict>();
+                Optional<IPv4Address> const& ip_address = IPv4Address::from_string(peer_dict.get_string("ip"));
                 // TODO: check if ip string is a host name and resolve it.
-                Peer p = Peer(peer_dict.get<ByteBuffer>("peer id"), IPv4Address::from_string(peer_dict.get_string("ip")).value(), peer_dict.get<i64>("port"));
+                VERIFY(ip_address.has_value());
+                Peer p = Peer(peer_dict.get<ByteBuffer>("peer id"), ip_address.value(), peer_dict.get<i64>("port"));
                 torrent.peers().append(p);
                 dbgln("peer: {}  ip: {}, port: {}", hexdump(p.get_id()).release_value(), p.get_address().to_string().release_value(), p.get_port());
             }
@@ -97,8 +95,11 @@ ErrorOr<void> Engine::announce(Torrent& torrent)
         if (err.is_error()) {
             dbgln("Error announcing: {}", err.error().string_literal());
         }
+        deferred_invoke([this, &request]() {
+            m_active_requests.remove(request);
+        });
     };
-    r->set_should_buffer_all_input(true);
+    request->set_should_buffer_all_input(true);
 
     return {};
 }
