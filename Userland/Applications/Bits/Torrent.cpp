@@ -10,6 +10,8 @@ namespace Bits {
 ErrorOr<String> state_to_string(TorrentState state)
 {
     switch (state) {
+    case TorrentState::ERROR:
+        return "Error"_string;
     case TorrentState::STOPPED:
         return "Stopped"_string;
     case TorrentState::STARTED:
@@ -19,7 +21,7 @@ ErrorOr<String> state_to_string(TorrentState state)
     }
 }
 
-Torrent::Torrent(NonnullOwnPtr<MetaInfo> meta_info, String const& data_path)
+Torrent::Torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString data_path)
     : m_meta_info(move(meta_info))
     , m_data_path(data_path)
     , m_state(TorrentState::STOPPED)

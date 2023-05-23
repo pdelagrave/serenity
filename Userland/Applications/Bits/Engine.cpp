@@ -5,38 +5,32 @@
  */
 
 #include "Engine.h"
-#include <LibCore/EventLoop.h>
 #include <LibProtocol/Request.h>
 
 namespace Bits {
 
-void Engine::custom_event(Core::CustomEvent& event)
+void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString data_path)
 {
-    auto maybe_error = [&]() -> ErrorOr<void> {
-        if (is<CommandEvent>(event)) {
-            auto command = reinterpret_cast<CommandEvent&>(event).command();
-            if (is<AddTorrent>(*command)) {
-                auto& add_torrent = reinterpret_cast<AddTorrent&>(*command);
-                m_torrents.append(adopt_nonnull_ref_or_enomem(new (nothrow) Torrent(add_torrent.meta_info(), add_torrent.data_path())).release_value());
-            } else if (is<StartTorrent>(*command)) {
-                auto& start_torrent = reinterpret_cast<StartTorrent&>(*command);
-                NonnullRefPtr<Torrent>& torrent = m_torrents.at(start_torrent.torrent_id());
-                torrent->set_state(TorrentState::STARTED);
-                TRY(announce(torrent));
-            } else if (is<StopTorrent>(*command)) {
-                auto& stop_torrent = reinterpret_cast<StopTorrent&>(*command);
-                m_torrents.at(stop_torrent.torrent_id())->set_state(TorrentState::STOPPED);
-            }
-        }
-        return {};
-    }.operator()();
-    if (maybe_error.is_error()) {
-        dbgln("Error executing command: {}", maybe_error.error().string_literal());
-    }
+    deferred_invoke([this, meta_info = move(meta_info), data_path]() mutable {
+        m_torrents.append(make_ref_counted<Torrent>(move(meta_info), data_path));
+    });
 }
-void Engine::post(NonnullOwnPtr<Command> command)
+
+void Engine::start_torrent(int torrent_id)
 {
-    Core::EventLoop::current().post_event(*this, make<CommandEvent>(move(command)));
+    deferred_invoke([this, torrent_id]() {
+        NonnullRefPtr<Torrent>& torrent = m_torrents.at(torrent_id);
+        // 1. check if files are there, if not create them
+        // 2. read the files and update the bytes already downloaded, how much data we have, so we know if we should start connecting to peers to download the rest.
+        torrent->set_state(TorrentState::STARTED);
+        announce(torrent).release_value_but_fixme_should_propagate_errors();
+    });
+}
+
+void Engine::stop_torrent(int torrent_id)
+{
+    dbgln("stop_torrent({})", torrent_id);
+    TODO();
 }
 
 ErrorOr<String> Engine::url_encode_bytes(u8 const* bytes, size_t length)

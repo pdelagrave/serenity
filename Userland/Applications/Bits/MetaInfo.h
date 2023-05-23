@@ -28,7 +28,7 @@ private:
 
 class MetaInfo {
 public:
-    static ErrorOr<MetaInfo*> create(Stream&);
+    static ErrorOr<NonnullOwnPtr<MetaInfo>> create(Stream&);
     URL announce() { return m_announce; };
     u8 const* info_hash() const { return m_info_hash; }
     i64 piece_length() { return m_piece_length; }

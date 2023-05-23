@@ -13,6 +13,7 @@
 namespace Bits {
 
 enum class TorrentState {
+    ERROR,
     STOPPED,
     STARTED
 };
@@ -20,16 +21,16 @@ ErrorOr<String> state_to_string(TorrentState state);
 
 class Torrent : public RefCounted<Torrent> {
 public:
-    Torrent(NonnullOwnPtr<MetaInfo>, String const&);
+    Torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
     MetaInfo& meta_info() { return *m_meta_info; }
     TorrentState state() { return m_state; }
     void set_state(TorrentState state) { m_state = state; }
-    String data_path() { return m_data_path; }
+    DeprecatedString data_path() { return m_data_path; }
     Vector<Peer> peers() { return m_peers; }
 
 private:
     NonnullOwnPtr<MetaInfo> m_meta_info;
-    String m_data_path;
+    DeprecatedString m_data_path;
     TorrentState m_state;
 
     Vector<Peer> m_peers;

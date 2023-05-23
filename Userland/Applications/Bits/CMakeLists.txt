@@ -15,8 +15,7 @@ set(SOURCES
     Torrent.cpp
     TorrentModel.cpp
     Engine.cpp
-    Command.cpp
-    Peer.cpp
+        Peer.cpp
         )
 
 set(GENERATED_SOURCES

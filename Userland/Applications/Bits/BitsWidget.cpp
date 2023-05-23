@@ -5,7 +5,6 @@
  */
 
 #include "BitsWidget.h"
-#include "Command.h"
 #include "Engine.h"
 #include "MetaInfo.h"
 #include "Torrent.h"
@@ -22,9 +21,9 @@ namespace Bits {
 ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> file)
 {
     dbgln("Opening file {}", filename);
-    auto meta_info = TRY(adopt_nonnull_own_or_enomem(TRY(MetaInfo::create(*file))));
+    auto meta_info = TRY(MetaInfo::create(*file));
     file->close();
-    m_engine->post(TRY(adopt_nonnull_own_or_enomem(new AddTorrent(move(meta_info), "/home/anon/Downloads"_string.release_value()))));
+    m_engine->add_torrent(move(meta_info), Core::StandardPaths::downloads_directory());
 
     return {};
 }
@@ -54,14 +53,14 @@ BitsWidget::BitsWidget(NonnullRefPtr<Engine> engine)
     auto start_torrent_action = GUI::Action::create("Start",
         [&](GUI::Action&) {
             m_torrents_table_view->selection().for_each_index([&](GUI::ModelIndex const& index) {
-                m_engine->post(adopt_nonnull_own_or_enomem(new StartTorrent(index.row())).release_value());
+                m_engine->start_torrent(index.row());
             });
         });
 
     auto stop_torrent_action = GUI::Action::create("Stop",
         [&](GUI::Action&) {
             m_torrents_table_view->selection().for_each_index([&](GUI::ModelIndex const& index) {
-                m_engine->post(adopt_nonnull_own_or_enomem(new StopTorrent(index.row())).release_value());
+                m_engine->stop_torrent(index.row());
             });
         });
 

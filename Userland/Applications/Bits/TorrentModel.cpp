@@ -23,6 +23,8 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
     if (!is_within_range(index))
         return {};
 
+    // TODO: progress in the taskbar
+    // warn("\033]9;{};{};\033\\", downloaded_size, maybe_total_size.value());
     auto torrent = m_torrents.at(index.row());
     MetaInfo& meta_info = torrent->meta_info();
     if (index.column() == 0)

@@ -11,9 +11,9 @@
 
 namespace Bits {
 
-ErrorOr<MetaInfo*> MetaInfo::create(Stream& stream)
+ErrorOr<NonnullOwnPtr<MetaInfo>> MetaInfo::create(Stream& stream)
 {
-    auto meta_info = new MetaInfo();
+    auto meta_info = TRY(adopt_nonnull_own_or_enomem(new (nothrow) MetaInfo()));
     auto root = TRY(BDecoder::parse<Dict>(stream));
 
     // TODO: support tracker-less torrent (DHT), some torrent files have no announce url.
