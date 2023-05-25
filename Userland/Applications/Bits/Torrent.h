@@ -33,6 +33,7 @@ public:
     BitField& local_bitfield() { return m_local_bitfield; }
     DeprecatedString const& display_name() const { return m_display_name; }
     NonnullOwnPtr<TorrentDataFileMap> const& data_file_map() const { return m_data_file_map; }
+    int progress() const { return m_local_bitfield.ones() * 100 / m_piece_count; }
 
 private:
     NonnullOwnPtr<MetaInfo> m_meta_info;

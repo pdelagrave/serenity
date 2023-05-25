@@ -13,6 +13,7 @@ BitField::BitField(u64 size)
 {
     m_data->resize(AK::ceil_div(size, 8L));
     m_data->zero_fill();
+    m_ones = 0;
 }
 
 BitField::BitField(NonnullOwnPtr<ByteBuffer> data)
@@ -32,10 +33,15 @@ bool BitField::get(u64 index) const
 void BitField::set(u64 index, bool value)
 {
     VERIFY(index < m_size);
-    if (value)
+    if (get(index) ^ value) {
+        if (value) {
+            m_ones++;
             (*m_data)[index / 8] |= (1 << (7 - (index % 8)));
-    else
+        } else {
+            m_ones--;
             (*m_data)[index / 8] &= ~(1 << (7 - (index % 8)));
+        }
+    }
 }
 
 }
