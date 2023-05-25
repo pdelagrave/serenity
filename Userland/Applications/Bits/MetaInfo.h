@@ -33,6 +33,7 @@ public:
     u8 const* info_hash() const { return m_info_hash; }
     i64 piece_length() { return m_piece_length; }
     Vector<File> files() { return m_files; }
+    Optional<DeprecatedString> const& root_dir_name() const { return m_root_dir_name; }
 
     i64 total_length();
 
@@ -42,7 +43,7 @@ private:
     u8 m_info_hash[20];
     i64 m_piece_length;
     Vector<File> m_files;
-    DeprecatedString m_root_dir_name;
+    Optional<DeprecatedString> m_root_dir_name;
     i64 m_total_length = 0;
 };
 }

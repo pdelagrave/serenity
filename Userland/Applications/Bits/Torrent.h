@@ -14,6 +14,7 @@ namespace Bits {
 
 enum class TorrentState {
     ERROR,
+    CHECKING,
     STOPPED,
     STARTED
 };
@@ -26,13 +27,18 @@ public:
     TorrentState state() { return m_state; }
     void set_state(TorrentState state) { m_state = state; }
     DeprecatedString data_path() { return m_data_path; }
-    Vector<Peer> peers() { return m_peers; }
+    Vector<Peer>& peers() { return m_peers; }
+    ByteBuffer const& local_bitfield() { return m_local_bitfield; }
+    DeprecatedString const& display_name() const { return m_display_name; }
 
 private:
-    NonnullOwnPtr<MetaInfo> m_meta_info;
-    DeprecatedString m_data_path;
-    TorrentState m_state;
+    const NonnullOwnPtr<MetaInfo> m_meta_info;
+    const u64 m_piece_count;
+    const ByteBuffer m_local_bitfield;
+    const DeprecatedString m_data_path;
+    const DeprecatedString m_display_name;
 
+    TorrentState m_state;
     Vector<Peer> m_peers;
 };
 

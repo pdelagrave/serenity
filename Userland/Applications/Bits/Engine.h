@@ -22,10 +22,14 @@ public:
     void start_torrent(int);
     void stop_torrent(int);
 
+protected:
+    virtual void timer_event(Core::TimerEvent&) override;
+
 private:
     Engine(NonnullRefPtr<Protocol::RequestClient>);
     static ErrorOr<String> url_encode_bytes(u8 const* bytes, size_t length);
     static ErrorOr<String> hexdump(ReadonlyBytes);
+    static ErrorOr<void> create_file(DeprecatedString const& path);
 
     NonnullRefPtr<Protocol::RequestClient> m_protocol_client;
     HashTable<NonnullRefPtr<Protocol::Request>> m_active_requests;

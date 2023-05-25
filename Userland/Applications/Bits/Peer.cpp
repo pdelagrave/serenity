@@ -9,9 +9,10 @@
 namespace Bits {
 
 Peer::Peer(ByteBuffer const& id, IPv4Address const& address, u16 const port)
-    : id(id)
-    , address(address)
-    , port(port)
+    : m_id(move(id))
+    , m_address(move(address))
+    , m_port(port)
 {
 }
+
 }

@@ -28,7 +28,7 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
     auto torrent = m_torrents.at(index.row());
     MetaInfo& meta_info = torrent->meta_info();
     if (index.column() == 0)
-        return meta_info.files().first().path();
+        return torrent->display_name();
     else if (index.column() == 1)
         return AK::human_readable_quantity(meta_info.total_length());
     else if (index.column() == 2)
