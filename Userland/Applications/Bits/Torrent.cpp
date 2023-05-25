@@ -21,13 +21,13 @@ ErrorOr<String> state_to_string(TorrentState state)
     }
 }
 
-Torrent::Torrent(NonnullOwnPtr<MetaInfo> meta_info, NonnullOwnPtr<Vector<DeprecatedString>> file_paths)
+Torrent::Torrent(NonnullOwnPtr<MetaInfo> meta_info, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> local_files)
     : m_meta_info(move(meta_info))
     , m_piece_count(AK::ceil_div(m_meta_info->total_length(), m_meta_info->piece_length()))
     , m_local_bitfield(BitField(m_piece_count))
-    , m_file_paths(move(file_paths))
-    , m_display_name(m_meta_info->root_dir_name().value_or(m_meta_info->files()[0].path()))
-    , m_data_file_map(make<TorrentDataFileMap>(m_meta_info->piece_hashes(), m_meta_info->piece_length(), m_meta_info->total_length(), make<Vector<DeprecatedString>>(*m_file_paths)))
+    , m_local_files(move(local_files))
+    , m_display_name(m_meta_info->root_dir_name().value_or(m_meta_info->files()[0]->path()))
+    , m_data_file_map(make<TorrentDataFileMap>(m_meta_info->piece_hashes(), m_meta_info->piece_length(), make<Vector<NonnullRefPtr<LocalFile>>>(*m_local_files)))
     , m_state(TorrentState::STOPPED)
 {
 }

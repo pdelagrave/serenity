@@ -13,6 +13,7 @@
 
 namespace Bits {
 
+
 enum class TorrentState {
     ERROR,
     CHECKING,
@@ -23,12 +24,12 @@ ErrorOr<String> state_to_string(TorrentState state);
 
 class Torrent : public RefCounted<Torrent> {
 public:
-    Torrent(NonnullOwnPtr<MetaInfo>, NonnullOwnPtr<Vector<DeprecatedString>>);
+    Torrent(NonnullOwnPtr<MetaInfo>, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>>);
     MetaInfo& meta_info() { return *m_meta_info; }
     u64 piece_count() const { return m_piece_count; }
     TorrentState state() { return m_state; }
     void set_state(TorrentState state) { m_state = state; }
-    NonnullOwnPtr<Vector<DeprecatedString>> const& file_paths() const { return m_file_paths; }
+    NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> const& local_files() const { return m_local_files; }
     Vector<Peer>& peers() { return m_peers; }
     BitField& local_bitfield() { return m_local_bitfield; }
     DeprecatedString const& display_name() const { return m_display_name; }
@@ -39,7 +40,7 @@ private:
     NonnullOwnPtr<MetaInfo> m_meta_info;
     u64 m_piece_count;
     BitField m_local_bitfield;
-    NonnullOwnPtr<Vector<DeprecatedString>> m_file_paths;
+    NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> m_local_files;
     DeprecatedString m_display_name;
     NonnullOwnPtr<TorrentDataFileMap> m_data_file_map;
 

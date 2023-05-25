@@ -20,12 +20,13 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
             optional_root_dir = DeprecatedString::formatted("/{}", torrent_root_dir.value());
         }
         
-        auto file_paths = make<Vector<DeprecatedString>>();
-        for (File f : meta_info->files()) {
-            file_paths->append(DeprecatedString::formatted("{}{}/{}", data_path, optional_root_dir, f.path()));
+        auto local_files = make<Vector<NonnullRefPtr<LocalFile>>>();
+        for (auto f : meta_info->files()) {
+            auto local_path = DeprecatedString::formatted("{}{}/{}", data_path, optional_root_dir, f->path());
+            local_files->append(make_ref_counted<LocalFile>(move(local_path), move(f)));
         }
         
-        NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(file_paths));
+        NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(local_files));
         m_torrents.append(torrent);
     });
 }
@@ -112,8 +113,8 @@ void Engine::start_torrent(int torrent_id)
 
         torrent->set_state(TorrentState::CHECKING);
 
-        for (auto file_path : *torrent->file_paths()) {
-            auto err = create_file(file_path);
+        for (auto local_file : *torrent->local_files()) {
+            auto err = create_file(local_file->local_path());
             if (err.is_error()) {
                 dbgln("error creating file: {}", err.error());
                 torrent->set_state(TorrentState::ERROR);
