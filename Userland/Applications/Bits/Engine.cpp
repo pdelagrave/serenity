@@ -14,7 +14,18 @@ namespace Bits {
 void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString data_path)
 {
     deferred_invoke([this, meta_info = move(meta_info), data_path]() mutable {
-        NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), data_path);
+        auto torrent_root_dir = meta_info->root_dir_name();
+        DeprecatedString optional_root_dir = "";
+        if (torrent_root_dir.has_value()) {
+            optional_root_dir = DeprecatedString::formatted("/{}", torrent_root_dir.value());
+        }
+        
+        auto file_paths = make<Vector<DeprecatedString>>();
+        for (File f : meta_info->files()) {
+            file_paths->append(DeprecatedString::formatted("{}{}/{}", data_path, optional_root_dir, f.path()));
+        }
+        
+        NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(file_paths));
         m_torrents.append(torrent);
     });
 }
@@ -100,19 +111,18 @@ void Engine::start_torrent(int torrent_id)
         // 2. read the files and update the bytes already downloaded, how much data we have, so we know if we should start connecting to peers to download the rest.
 
         torrent->set_state(TorrentState::CHECKING);
-        auto torrent_root_dir = torrent->meta_info().root_dir_name();
-        DeprecatedString optional_root_dir = "";
-        if (torrent_root_dir.has_value()) {
-            optional_root_dir = DeprecatedString::formatted("/{}", torrent_root_dir.value());
-        }
 
-        for (File f : torrent->meta_info().files()) {
-            auto err = create_file(DeprecatedString::formatted("{}{}/{}", torrent->data_path(), optional_root_dir, f.path()));
+        for (auto file_path : *torrent->file_paths()) {
+            auto err = create_file(file_path);
             if (err.is_error()) {
                 dbgln("error creating file: {}", err.error());
                 torrent->set_state(TorrentState::ERROR);
                 return;
             }
+        }
+
+        for (u64 i = 0; i < torrent->piece_count(); i++) {
+            torrent->local_bitfield().set(i, torrent->data_file_map()->verify_piece(i));
         }
 
         torrent->set_state(TorrentState::STARTED);

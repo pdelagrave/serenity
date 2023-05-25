@@ -57,9 +57,10 @@ ErrorOr<NonnullOwnPtr<MetaInfo>> MetaInfo::create(Stream& stream)
             i64 length = file_dict.get<i64>("length");
             meta_info->m_files.append(File(path_builder.to_deprecated_string(), length));
             meta_info->m_total_length += length;
-            dbgln("path: {}, length: {}, totallength: {}", path_builder.to_string().release_value(), length, meta_info->m_total_length);
         }
     }
+
+    meta_info->m_piece_hashes = info_dict.get<ByteBuffer>("pieces");
 
     return meta_info;
 }

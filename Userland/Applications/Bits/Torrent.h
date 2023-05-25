@@ -8,6 +8,7 @@
 
 #include "MetaInfo.h"
 #include "Peer.h"
+#include "TorrentDataFileMap.h"
 #include <AK/NonnullOwnPtr.h>
 
 namespace Bits {
@@ -22,21 +23,24 @@ ErrorOr<String> state_to_string(TorrentState state);
 
 class Torrent : public RefCounted<Torrent> {
 public:
-    Torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
+    Torrent(NonnullOwnPtr<MetaInfo>, NonnullOwnPtr<Vector<DeprecatedString>>);
     MetaInfo& meta_info() { return *m_meta_info; }
+    u64 piece_count() const { return m_piece_count; }
     TorrentState state() { return m_state; }
     void set_state(TorrentState state) { m_state = state; }
-    DeprecatedString data_path() { return m_data_path; }
+    NonnullOwnPtr<Vector<DeprecatedString>> const& file_paths() const { return m_file_paths; }
     Vector<Peer>& peers() { return m_peers; }
-    ByteBuffer const& local_bitfield() { return m_local_bitfield; }
+    BitField& local_bitfield() { return m_local_bitfield; }
     DeprecatedString const& display_name() const { return m_display_name; }
+    NonnullOwnPtr<TorrentDataFileMap> const& data_file_map() const { return m_data_file_map; }
 
 private:
-    const NonnullOwnPtr<MetaInfo> m_meta_info;
-    const u64 m_piece_count;
-    const ByteBuffer m_local_bitfield;
-    const DeprecatedString m_data_path;
-    const DeprecatedString m_display_name;
+    NonnullOwnPtr<MetaInfo> m_meta_info;
+    u64 m_piece_count;
+    BitField m_local_bitfield;
+    NonnullOwnPtr<Vector<DeprecatedString>> m_file_paths;
+    DeprecatedString m_display_name;
+    NonnullOwnPtr<TorrentDataFileMap> m_data_file_map;
 
     TorrentState m_state;
     Vector<Peer> m_peers;

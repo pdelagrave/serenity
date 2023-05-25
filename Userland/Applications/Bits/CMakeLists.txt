@@ -16,6 +16,8 @@ set(SOURCES
     TorrentModel.cpp
     Engine.cpp
         Peer.cpp
+        TorrentDataFileMap.cpp
+        BitField.cpp
         )
 
 set(GENERATED_SOURCES

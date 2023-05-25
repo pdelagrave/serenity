@@ -36,7 +36,7 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
     else if (index.column() == 3)
         return "0%"_string.release_value_but_fixme_should_propagate_errors();
     else if (index.column() == 4)
-        return torrent->data_path();
+        return "torrent->data_path()";
     else
         return "??";
 }

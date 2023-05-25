@@ -34,6 +34,7 @@ public:
     i64 piece_length() { return m_piece_length; }
     Vector<File> files() { return m_files; }
     Optional<DeprecatedString> const& root_dir_name() const { return m_root_dir_name; }
+    ByteBuffer piece_hashes() const { return m_piece_hashes; }
 
     i64 total_length();
 
@@ -42,6 +43,7 @@ private:
     URL m_announce;
     u8 m_info_hash[20];
     i64 m_piece_length;
+    ByteBuffer m_piece_hashes;
     Vector<File> m_files;
     Optional<DeprecatedString> m_root_dir_name;
     i64 m_total_length = 0;
