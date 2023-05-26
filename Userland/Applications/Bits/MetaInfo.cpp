@@ -39,7 +39,7 @@ ErrorOr<NonnullOwnPtr<MetaInfo>> MetaInfo::create(Stream& stream)
     meta_info->m_piece_length = info_dict.get<i64>("piece length");
     if (info_dict.contains("length")) {
         // single file mode
-        meta_info->m_files.append(File(info_dict.get_string("name"), info_dict.get<i64>("length")));
+        meta_info->m_files.empend(make_ref_counted<File>(info_dict.get_string("name"), info_dict.get<i64>("length")));
         meta_info->m_total_length = info_dict.get<i64>("length");
     } else {
         // multi file mode
@@ -55,7 +55,7 @@ ErrorOr<NonnullOwnPtr<MetaInfo>> MetaInfo::create(Stream& stream)
             }
             path_builder.trim(1);
             i64 length = file_dict.get<i64>("length");
-            meta_info->m_files.append(File(path_builder.to_deprecated_string(), length));
+            meta_info->m_files.empend(make_ref_counted<File>(path_builder.to_deprecated_string(), length));
             meta_info->m_total_length += length;
         }
     }

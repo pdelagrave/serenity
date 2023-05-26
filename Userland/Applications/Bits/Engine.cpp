@@ -19,13 +19,13 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
         if (torrent_root_dir.has_value()) {
             optional_root_dir = DeprecatedString::formatted("/{}", torrent_root_dir.value());
         }
-        
+
         auto local_files = make<Vector<NonnullRefPtr<LocalFile>>>();
         for (auto f : meta_info->files()) {
             auto local_path = DeprecatedString::formatted("{}{}/{}", data_path, optional_root_dir, f->path());
             local_files->append(make_ref_counted<LocalFile>(move(local_path), move(f)));
         }
-        
+
         NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(local_files));
         m_torrents.append(torrent);
     });
@@ -120,10 +120,33 @@ void Engine::start_torrent(int torrent_id)
                 torrent->set_state(TorrentState::ERROR);
                 return;
             }
+            auto fe = Core::File::open(local_file->local_path(), Core::File::OpenMode::ReadWrite);
+            if (fe.is_error()) {
+                dbgln("error opening file: {}", fe.error());
+                torrent->set_state(TorrentState::ERROR);
+                return;
+            }
+            auto f = fe.release_value();
+            auto x = f->truncate(local_file->meta_info_file()->length());
+            if (x.is_error()) {
+                dbgln("error truncating file: {}", x.error());
+                torrent->set_state(TorrentState::ERROR);
+                return;
+            }
+            f->close();
         }
 
-        for (u64 i = 0; i < torrent->piece_count(); i++) {
-            torrent->local_bitfield().set(i, torrent->data_file_map()->verify_piece(i));
+        auto verify_pieces = [torrent]() -> ErrorOr<void> {
+            for (u64 i = 0; i < torrent->piece_count(); i++) {
+                torrent->local_bitfield().set(i, TRY(torrent->data_file_map()->verify_piece(i, i == torrent->piece_count() - 1)));
+            }
+            return {};
+        }();
+
+        if (verify_pieces.is_error()) {
+            torrent->set_state(TorrentState::ERROR);
+            dbgln("error verifying pieces: {}", verify_pieces.error());
+            return;
         }
 
         torrent->set_state(TorrentState::STARTED);
