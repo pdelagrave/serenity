@@ -18,8 +18,8 @@ NonnullOwnPtr<MultiFileMapperStream> MultiFileMapperStream::create(NonnullOwnPtr
     for (auto file : *files) {
         total_length += file->meta_info_file()->length();
 
-        auto optional_fs_file = Optional<NonnullOwnPtr<Core::File>>();
-        optional_fs_file.lazy_emplace([&file] { return Core::File::open(file->local_path(), Core::File::OpenMode::ReadWrite).release_value_but_fixme_should_propagate_errors(); });
+        auto optional_fs_file = Optional<NonnullOwnPtr<SeekableStream>>();
+        optional_fs_file.lazy_emplace([&file] { return Core::InputBufferedFile::create(Core::File::open(file->local_path(), Core::File::OpenMode::ReadWrite).release_value()).release_value(); });
         auto mapped_file_position = make_ref_counted<MappedFilePosition>(i, total_length, move(optional_fs_file));
 
         files_positions->append(move(mapped_file_position));
@@ -49,6 +49,7 @@ ErrorOr<void> MultiFileMapperStream::read_until_filled(Bytes buffer)
             return result.release_error();
         }
 
+        m_current_offset += result.value().size();
         nread += result.value().size();
     }
 
@@ -59,7 +60,10 @@ ErrorOr<size_t> MultiFileMapperStream::seek(i64 offset, SeekMode mode)
 {
     VERIFY(mode == SeekMode::SetPosition);
 
-    dbgln("Seeking to offset {}", offset);
+    if ((u64)offset == m_current_offset)
+        return offset;
+
+
     auto* mapped_file_position = m_files_positions_by_offset.find_smallest_not_below(offset);
     if (!mapped_file_position)
         return Error::from_string_literal("Invalid offset");
@@ -68,6 +72,7 @@ ErrorOr<size_t> MultiFileMapperStream::seek(i64 offset, SeekMode mode)
     u64 prev_relative_zero_offset = m_current_file->file_index == 0 ? 0 : m_files_positions->at(m_current_file->file_index - 1)->relative_zero_offset;
     dbgln("m_current_file->file_index: {}, prev_relative_zero_offset: {}", m_current_file->file_index, prev_relative_zero_offset);
     TRY(m_current_file->fs_file.value()->seek(offset - prev_relative_zero_offset, SeekMode::SetPosition));
+    m_current_offset = (u64) offset;
 
     return offset;
 }
@@ -137,11 +142,9 @@ ErrorOr<bool> TorrentDataFileMap::verify_piece(i64 index, bool is_last_piece)
     auto piece_data = TRY(ByteBuffer::create_zeroed(piece_length));
     TRY(m_files_mapper->read_until_filled(piece_data.bytes()));
 
-    Crypto::Hash::Manager hash;
-    hash.initialize(Crypto::Hash::HashKind::SHA1);
-    hash.update(piece_data.bytes().slice(0, piece_length));
+    m_sha1.update(piece_data.bytes().slice(0, piece_length));
 
-    return hash.digest().bytes() == piece_hash.bytes();
+    return m_sha1.digest().bytes() == piece_hash.bytes();
 }
 
 }

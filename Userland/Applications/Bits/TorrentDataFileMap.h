@@ -8,6 +8,7 @@
 #include "BitField.h"
 #include "Files.h"
 #include "LibCore/File.h"
+#include "LibCrypto/Hash/HashManager.h"
 #include <AK/ByteBuffer.h>
 #include <AK/Forward.h>
 #include <AK/Optional.h>
@@ -39,7 +40,7 @@ public:
 
 private:
     struct MappedFilePosition : public RefCounted<MappedFilePosition> {
-        MappedFilePosition(size_t file_index, i64 relative_zero_offset, Optional<NonnullOwnPtr<Core::File>> fs_file)
+        MappedFilePosition(size_t file_index, i64 relative_zero_offset, Optional<NonnullOwnPtr<SeekableStream>> fs_file)
             : file_index(file_index)
             , relative_zero_offset(relative_zero_offset)
             , fs_file(move(fs_file))
@@ -47,7 +48,7 @@ private:
         }
         const size_t file_index;
         const i64 relative_zero_offset; // also used as the key of the BST
-        Optional<NonnullOwnPtr<Core::File>> const fs_file;
+        Optional<NonnullOwnPtr<SeekableStream>> const fs_file;
     };
 
     MultiFileMapperStream(NonnullOwnPtr<Vector<NonnullRefPtr<MappedFilePosition>>> files_positions, u64 total_length)
@@ -59,7 +60,8 @@ private:
             m_files_positions_by_offset.insert(mapped_file_position->relative_zero_offset, move(mapped_file_position));
         }
     }
-    Core::File& current_fs_file() {
+    SeekableStream& current_fs_file()
+    {
         return **m_current_file->fs_file;
     };
 
@@ -67,6 +69,7 @@ private:
     NonnullOwnPtr<Vector<NonnullRefPtr<MappedFilePosition>>> m_files_positions;
     RedBlackTree<u64, NonnullRefPtr<MappedFilePosition>> m_files_positions_by_offset;
     const u64 m_total_length;
+    u64 m_current_offset { 0 };
 };
 
 class TorrentDataFileMap {
@@ -79,6 +82,7 @@ private:
     ByteBuffer m_piece_hashes;
     i64 m_piece_length;
     NonnullOwnPtr<MultiFileMapperStream> m_files_mapper;
+    Crypto::Hash::Manager m_sha1 { Crypto::Hash::HashKind::SHA1 };
 };
 
 }
