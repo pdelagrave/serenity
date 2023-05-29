@@ -16,6 +16,8 @@ ErrorOr<String> state_to_string(TorrentState state)
         return "Stopped"_string;
     case TorrentState::STARTED:
         return "Started"_string;
+    case TorrentState::CHECKING:
+        return "Checking"_string;
     default:
         VERIFY_NOT_REACHED();
     }
@@ -31,4 +33,30 @@ Torrent::Torrent(NonnullOwnPtr<MetaInfo> meta_info, NonnullOwnPtr<Vector<Nonnull
     , m_state(TorrentState::STOPPED)
 {
 }
+
+void Torrent::checking_in_background(Function<void()> on_complete)
+{
+    m_background_checker = Threading::BackgroundAction<int>::construct(
+        [this](auto& task) -> ErrorOr<int> {
+            m_state = TorrentState::CHECKING;
+            m_piece_verified = 0;
+            for (u64 i = 0; i < piece_count(); i++) {
+                m_piece_verified++;
+                if (task.is_canceled())
+                    return Error::from_errno(ECANCELED);
+                local_bitfield().set(i, TRY(data_file_map()->check_piece(i, i == piece_count() - 1)));
+            }
+
+            return 0;
+        },
+        [on_complete = move(on_complete)](auto) -> ErrorOr<void> {
+            on_complete();
+            return {};
+        },
+        [this](auto error) {
+            m_state = TorrentState::ERROR;
+            warnln("Error checking torrent: {}", error);
+        });
+}
+
 }

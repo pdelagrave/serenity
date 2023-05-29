@@ -136,21 +136,12 @@ void Engine::start_torrent(int torrent_id)
             f->close();
         }
 
-        auto verify_pieces = [torrent]() -> ErrorOr<void> {
-            for (u64 i = 0; i < torrent->piece_count(); i++) {
-                torrent->local_bitfield().set(i, TRY(torrent->data_file_map()->verify_piece(i, i == torrent->piece_count() - 1)));
-            }
-            return {};
-        }();
-
-        if (verify_pieces.is_error()) {
-            torrent->set_state(TorrentState::ERROR);
-            dbgln("error verifying pieces: {}", verify_pieces.error());
-            return;
-        }
-
-        torrent->set_state(TorrentState::STARTED);
-        announce(torrent).release_value_but_fixme_should_propagate_errors();
+        torrent->checking_in_background([this, torrent, origin_event_loop = &Core::EventLoop::current()] {
+            origin_event_loop->deferred_invoke([this, torrent] {
+                torrent->set_state(TorrentState::STARTED);
+                announce(torrent).release_value_but_fixme_should_propagate_errors();
+            });
+        });
     });
 }
 

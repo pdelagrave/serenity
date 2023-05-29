@@ -25,6 +25,7 @@ ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::
     file->close();
     m_engine->add_torrent(move(meta_info), Core::StandardPaths::downloads_directory());
 
+    m_engine->start_torrent(0);
     return {};
 }
 

@@ -76,7 +76,7 @@ class TorrentDataFileMap {
 public:
     TorrentDataFileMap(ByteBuffer piece_hashes, i64 piece_length, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> files);
     bool write_piece(u32 index, ByteBuffer const& data);
-    ErrorOr<bool> verify_piece(i64 index, bool is_last_piece);
+    ErrorOr<bool> check_piece(i64 index, bool is_last_piece);
 
 private:
     ByteBuffer m_piece_hashes;

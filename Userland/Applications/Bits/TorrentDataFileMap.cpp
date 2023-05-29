@@ -133,7 +133,7 @@ bool TorrentDataFileMap::write_piece(u32, ByteBuffer const&)
     return true;
 }
 
-ErrorOr<bool> TorrentDataFileMap::verify_piece(i64 index, bool is_last_piece)
+ErrorOr<bool> TorrentDataFileMap::check_piece(i64 index, bool is_last_piece)
 {
     auto piece_length = is_last_piece ? m_files_mapper->total_length() % m_piece_length : m_piece_length;
 

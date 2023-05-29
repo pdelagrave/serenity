@@ -34,7 +34,7 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
     else if (index.column() == 2)
         return state_to_string(torrent->state()).release_value_but_fixme_should_propagate_errors();
     else if (index.column() == 3)
-        return DeprecatedString::formatted("{}%", torrent->progress());
+        return DeprecatedString::formatted("{}%", torrent->state() == TorrentState::CHECKING ? torrent->check_progress() : torrent->progress());
     else if (index.column() == 4)
         return "torrent->data_path()";
     else
