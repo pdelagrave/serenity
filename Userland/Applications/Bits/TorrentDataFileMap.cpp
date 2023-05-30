@@ -128,22 +128,27 @@ TorrentDataFileMap::TorrentDataFileMap(ByteBuffer piece_hashes, i64 piece_length
 {
 }
 
-bool TorrentDataFileMap::write_piece(u32, ByteBuffer const&)
+ErrorOr<bool> TorrentDataFileMap::write_piece(u32 index, ReadonlyBytes data)
 {
+    TRY(m_files_mapper->seek(index * m_piece_length, SeekMode::SetPosition));
+    TRY(m_files_mapper->write_until_depleted(data));
     return true;
 }
 
 ErrorOr<bool> TorrentDataFileMap::check_piece(i64 index, bool is_last_piece)
 {
     auto piece_length = is_last_piece ? m_files_mapper->total_length() % m_piece_length : m_piece_length;
-
-    auto piece_hash = TRY(m_piece_hashes.slice(index * 20, 20));
     TRY(m_files_mapper->seek(index * m_piece_length, SeekMode::SetPosition));
     auto piece_data = TRY(ByteBuffer::create_zeroed(piece_length));
     TRY(m_files_mapper->read_until_filled(piece_data.bytes()));
 
-    m_sha1.update(piece_data.bytes().slice(0, piece_length));
+    return validate_hash(index, piece_data.bytes().slice(0, piece_length));
+}
 
+ErrorOr<bool> TorrentDataFileMap::validate_hash(i64 index, AK::ReadonlyBytes data)
+{
+    auto piece_hash = TRY(m_piece_hashes.slice(index * 20, 20));
+    m_sha1.update(data); // not thread safe, this will cause problem.
     return m_sha1.digest().bytes() == piece_hash.bytes();
 }
 

@@ -61,6 +61,7 @@ protected:
     void custom_event(Core::CustomEvent& event) override;
 
 private:
+    const u64 BlockLength = 16 * KiB;
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
 
@@ -69,15 +70,17 @@ private:
         NonnullRefPtr<Torrent> torrent;
         bool got_handshake = false;
         u32 incoming_message_length = sizeof(BittorrentHandshake);
+        ByteBuffer incoming_message_buffer {};
     };
 
     Queue<NonnullOwnPtr<SocketContext>> m_sockets_to_create;
     Threading::Mutex m_sockets_to_create_mutex;
     HashMap<Core::TCPSocket*, NonnullOwnPtr<SocketContext>> m_socket_contexts;
-    ErrorOr<void> read_handshake(Core::TCPSocket* socket, SocketContext* context);
+    ErrorOr<void> read_handshake(Stream& bytes, SocketContext* context);
     ErrorOr<void> add_new_connections();
     ErrorOr<void> read_from_socket(Core::TCPSocket*);
     ErrorOr<void> send_local_bitfield(Core::TCPSocket*, SocketContext*);
+    ErrorOr<void> receive_bitfield(Core::TCPSocket*, ReadonlyBytes const&, SocketContext*);
 };
 
 }

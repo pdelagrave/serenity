@@ -31,6 +31,12 @@ public:
     void set_choking_peer(bool const value) { m_we_are_choking_peer = value; }
     void set_interested_in_peer(bool const value) { m_we_are_interested_in_peer = value; }
 
+    ByteBuffer& incoming_piece() { return m_incoming_piece; }
+    size_t incoming_piece_index() { return m_incoming_piece_index; }
+    size_t incoming_piece_offset() { return m_incoming_piece_offset; }
+    void set_incoming_piece_index(size_t const index) { m_incoming_piece_index = index; }
+    void set_incoming_piece_offset(size_t const offset) { m_incoming_piece_offset = offset; }
+
 private:
     const ByteBuffer m_id;
     const IPv4Address m_address;
@@ -42,6 +48,10 @@ private:
     bool m_peer_is_interested_in_us { false };
     bool m_we_are_choking_peer { true };
     bool m_we_are_interested_in_peer { false };
+
+    ByteBuffer m_incoming_piece;
+    size_t m_incoming_piece_index;
+    size_t m_incoming_piece_offset;
 };
 
 }

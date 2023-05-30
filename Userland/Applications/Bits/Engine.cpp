@@ -141,6 +141,7 @@ void Engine::start_torrent(int torrent_id)
             torrent->set_state(TorrentState::STARTED);
             // announcing using the UI thread/loop:
             origin_event_loop->deferred_invoke([this, torrent] {
+                dbgln("we have {}/{} pieces", torrent->local_bitfield().ones(), torrent->piece_count());
                 announce(torrent, [this, torrent] {
                     // announce finished callback, now on the UI loop/thread
                     for (int i = 0; i < min(5, torrent->peers().size()); i++) {

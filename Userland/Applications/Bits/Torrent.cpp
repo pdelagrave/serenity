@@ -48,7 +48,11 @@ void Torrent::checking_in_background(Function<void()> on_complete)
                 m_piece_verified++;
                 if (task.is_canceled())
                     return Error::from_errno(ECANCELED);
-                local_bitfield().set(i, TRY(data_file_map()->check_piece(i, i == piece_count() - 1)));
+                bool is_present = TRY(data_file_map()->check_piece(i, i == piece_count() - 1));
+                local_bitfield().set(i, is_present);
+                if (!is_present)
+                    m_missing_pieces.set(i, make_ref_counted<PieceAvailability>(i));
+
             }
 
             return 0;

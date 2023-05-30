@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "Applications/Bits/BK/PieceHeap.h"
 #include "MetaInfo.h"
 #include "Peer.h"
 #include "TorrentDataFileMap.h"
@@ -23,7 +24,18 @@ enum class TorrentState {
 };
 ErrorOr<String> state_to_string(TorrentState state);
 
+struct PieceAvailability : public RefCounted<PieceAvailability> {
+    PieceAvailability(u64 index_in_torrent)
+        : index_in_torrent(index_in_torrent)
+    {
+    }
+    Optional<size_t> index_in_heap = {};
+    u64 index_in_torrent;
+};
+
 class Torrent : public RefCounted<Torrent> {
+    using MissingPieceHeap = BK::PieceHeap<u32, RefPtr<PieceAvailability>, 1000>;
+    using MissingPieceMap = AK::HashMap<u64, RefPtr<PieceAvailability>>;
 public:
     Torrent(NonnullOwnPtr<MetaInfo>, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>>);
     MetaInfo& meta_info() { return *m_meta_info; }
@@ -42,6 +54,9 @@ public:
 
     void checking_in_background(Function<void()> on_complete);
 
+    MissingPieceHeap& piece_heap() { return m_piece_heap; }
+    MissingPieceMap& missing_pieces() { return m_missing_pieces; }
+
 private:
     NonnullOwnPtr<MetaInfo> m_meta_info;
     u64 m_piece_count;
@@ -56,6 +71,9 @@ private:
 
     TorrentState m_state;
     Vector<NonnullRefPtr<Peer>> m_peers;
+
+    MissingPieceHeap m_piece_heap;
+    MissingPieceMap m_missing_pieces;
 };
 
 }
