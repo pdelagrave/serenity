@@ -5,6 +5,7 @@
  */
 
 #include "Torrent.h"
+#include <AK/Random.h>
 
 namespace Bits {
 ErrorOr<String> state_to_string(TorrentState state)
@@ -32,13 +33,16 @@ Torrent::Torrent(NonnullOwnPtr<MetaInfo> meta_info, NonnullOwnPtr<Vector<Nonnull
     , m_data_file_map(make<TorrentDataFileMap>(m_meta_info->piece_hashes(), m_meta_info->piece_length(), make<Vector<NonnullRefPtr<LocalFile>>>(*m_local_files)))
     , m_state(TorrentState::STOPPED)
 {
+    m_local_peer_id.resize(20);
+    fill_with_random({ m_local_peer_id.data(), m_local_peer_id.size() });
 }
 
 void Torrent::checking_in_background(Function<void()> on_complete)
 {
+    //    on_complete();
+    //    return;
     m_background_checker = Threading::BackgroundAction<int>::construct(
         [this](auto& task) -> ErrorOr<int> {
-            m_state = TorrentState::CHECKING;
             m_piece_verified = 0;
             for (u64 i = 0; i < piece_count(); i++) {
                 m_piece_verified++;

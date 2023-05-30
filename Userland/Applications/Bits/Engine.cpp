@@ -137,9 +137,19 @@ void Engine::start_torrent(int torrent_id)
         }
 
         torrent->checking_in_background([this, torrent, origin_event_loop = &Core::EventLoop::current()] {
+            // Checking finished callback, still on the background thread
+            torrent->set_state(TorrentState::STARTED);
+            // announcing using the UI thread/loop:
             origin_event_loop->deferred_invoke([this, torrent] {
-                torrent->set_state(TorrentState::STARTED);
-                announce(torrent).release_value_but_fixme_should_propagate_errors();
+                announce(torrent, [this, torrent] {
+                    // announce finished callback, now on the UI loop/thread
+                    for (int i = 0; i < min(5, torrent->peers().size()); i++) {
+                        auto& peer = torrent->peers()[i];
+                        if (peer->id() == torrent->local_peer_id())
+                            continue;
+                        data.add_connection(peer, torrent);
+                    }
+                }).release_value_but_fixme_should_propagate_errors();
             });
         });
     });
@@ -148,6 +158,7 @@ void Engine::start_torrent(int torrent_id)
 void Engine::stop_torrent(int torrent_id)
 {
     dbgln("stop_torrent({})", torrent_id);
+    // todo: support stopping the torrent transfer and also stopping the checking if that's the current state.
     TODO();
 }
 
@@ -160,25 +171,21 @@ ErrorOr<String> Engine::url_encode_bytes(u8 const* bytes, size_t length)
     return builder.to_string();
 }
 
-ErrorOr<void> Engine::announce(Torrent& torrent)
+ErrorOr<void> Engine::announce(Torrent& torrent, Function<void()> on_complete)
 {
-    auto info_hash = TRY(url_encode_bytes(torrent.meta_info().info_hash(), 20));
-    u8 m_local_peer_id_bytes[20];
-    // memcpy(&m_local_peer_id_bytes, "\x57\x39\x6b\x5d\x72\xb4\x7f\x3a\x4b\x26\xcf\x84\xbf\x6b\x93\x52\x3f\x14\xf8\xca", 20);
-    fill_with_random(Span<u8>(m_local_peer_id_bytes, 20));
-    auto my_peer_id = TRY(url_encode_bytes(m_local_peer_id_bytes, 20));
-    auto my_port = 27007;
+    auto info_hash = TRY(url_encode_bytes(torrent.meta_info().info_hash().data(), 20));
+    auto my_peer_id = TRY(url_encode_bytes(torrent.local_peer_id().data(), 20));
     auto url = URL(torrent.meta_info().announce());
 
     // https://www.bittorrent.org/beps/bep_0007.html
     // should be generated per session per torrent.
     u64 key = get_random<u64>();
 
-    url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&compact=0&uploaded=1&downloaded=1&left=2&key={}", info_hash, my_peer_id, my_port, key)).to_deprecated_string());
+    url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&compact=0&uploaded=1&downloaded=1&left=2&key={}", info_hash, my_peer_id, torrent.local_port(), key)).to_deprecated_string());
     auto request = m_protocol_client->start_request("GET", url);
     m_active_requests.set(*request);
 
-    request->on_buffered_request_finish = [this, &torrent, &request = *request](bool success, auto total_size, auto&, auto status_code, ReadonlyBytes payload) {
+    request->on_buffered_request_finish = [this, &torrent, &request = *request, on_complete = move(on_complete)](bool success, auto total_size, auto&, auto status_code, ReadonlyBytes payload) {
         auto err = [&]() -> ErrorOr<void> {
             dbgln("We got back the payload, size: {}, success: {}, status_code: {}, torrent state: {}", total_size, success, status_code, state_to_string(torrent.state()));
             auto response = TRY(BDecoder::parse<Dict>(payload));
@@ -197,10 +204,12 @@ ErrorOr<void> Engine::announce(Torrent& torrent)
                 Optional<IPv4Address> const& ip_address = IPv4Address::from_string(peer_dict.get_string("ip"));
                 // TODO: check if ip string is a host name and resolve it.
                 VERIFY(ip_address.has_value());
-                Peer p = Peer(peer_dict.get<ByteBuffer>("peer id"), ip_address.value(), peer_dict.get<i64>("port"));
-                torrent.peers().append(move(p));
-                dbgln("peer: {}  ip: {}, port: {}", hexdump(p.get_id()).release_value(), p.get_address().to_string().release_value(), p.get_port());
+                auto p = make_ref_counted<Peer>(peer_dict.get<ByteBuffer>("peer id"), ip_address.value(), peer_dict.get<i64>("port"));
+                torrent.peers().append(p);
+                dbgln("peer: {}  ip: {}, port: {}", hexdump(p->id()).release_value(), p->address().to_string().release_value(), p->port());
             }
+
+            on_complete();
 
             return {};
         }.operator()();

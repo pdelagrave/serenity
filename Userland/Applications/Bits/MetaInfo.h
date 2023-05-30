@@ -18,7 +18,7 @@ class MetaInfo {
 public:
     static ErrorOr<NonnullOwnPtr<MetaInfo>> create(Stream&);
     URL announce() { return m_announce; };
-    u8 const* info_hash() const { return m_info_hash; }
+    ReadonlyBytes info_hash() const { return m_info_hash; }
     i64 piece_length() { return m_piece_length; }
     Vector<NonnullRefPtr<File>> files() { return m_files; }
     Optional<DeprecatedString> const& root_dir_name() const { return m_root_dir_name; }
@@ -29,7 +29,7 @@ public:
 private:
     MetaInfo() {};
     URL m_announce;
-    u8 m_info_hash[20];
+    ByteBuffer m_info_hash;
     i64 m_piece_length;
     ByteBuffer m_piece_hashes;
     Vector<NonnullRefPtr<File>> m_files;

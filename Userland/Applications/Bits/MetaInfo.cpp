@@ -34,7 +34,7 @@ ErrorOr<NonnullOwnPtr<MetaInfo>> MetaInfo::create(Stream& stream)
     Crypto::Hash::Manager hash;
     hash.initialize(Crypto::Hash::HashKind::SHA1);
     hash.update(buffer.bytes().slice(0, buffer_size));
-    memcpy(meta_info->m_info_hash, hash.digest().immutable_data(), 20);
+    meta_info->m_info_hash = TRY(ByteBuffer::copy(hash.digest().bytes()));
 
     meta_info->m_piece_length = info_dict.get<i64>("piece length");
     if (info_dict.contains("length")) {

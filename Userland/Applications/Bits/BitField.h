@@ -14,7 +14,7 @@ namespace Bits {
 class BitField {
 public:
     BitField(u64 size);
-    BitField(NonnullOwnPtr<ByteBuffer> data);
+    BitField(ByteBuffer data);
 
     bool get(u64 index) const;
     void set(u64 index, bool value);
@@ -22,10 +22,11 @@ public:
     u64 zeroes() const { return m_size - m_ones; }
 
     u64 size() const { return m_size; }
+    u64 data_size() const { return m_data.size(); }
 
 private:
-    const u64 m_size;
-    NonnullOwnPtr<ByteBuffer> const m_data;
-    u64 m_ones;
+    u64 m_size;
+    ByteBuffer m_data {};
+    u64 m_ones = 0;
 };
 }

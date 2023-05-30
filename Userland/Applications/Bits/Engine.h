@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "Data.h"
 #include "Torrent.h"
 #include <LibCore/Object.h>
 #include <LibProtocol/RequestClient.h>
@@ -35,7 +36,9 @@ private:
     HashTable<NonnullRefPtr<Protocol::Request>> m_active_requests;
 
     Vector<NonnullRefPtr<Torrent>> m_torrents;
-    ErrorOr<void> announce(Torrent&);
+    ErrorOr<void> announce(Torrent&, Function<void()> on_complete);
+
+    Data data;
 };
 
 }
