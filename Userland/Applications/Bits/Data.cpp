@@ -26,7 +26,7 @@ Data::Data()
     m_thread->start();
 }
 
-ErrorOr<void> Data::read_handshake(Core::TCPSocket* socket, SocketContext& context)
+ErrorOr<void> Data::read_handshake(Core::TCPSocket* socket, SocketContext* context)
 {
     auto handshake = TRY(socket->read_value<BittorrentHandshake>());
     dbgln("Received handshake_message: Protocol: {}, Reserved: {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b}, info_hash: {:20hex-dump}, peer_id: {:20hex-dump}",
@@ -42,13 +42,13 @@ ErrorOr<void> Data::read_handshake(Core::TCPSocket* socket, SocketContext& conte
         handshake.info_hash,
         handshake.peer_id);
 
-    if (context.torrent->meta_info().info_hash() != Bytes { handshake.info_hash, 20 }) {
-        dbgln("Peer {}:{} sent a handshake with the wrong info hash.", context.peer->address().to_string(), context.peer->port());
+    if (context->torrent->meta_info().info_hash() != Bytes { handshake.info_hash, 20 }) {
+        dbgln("Peer {}:{} sent a handshake with the wrong info hash.", context->peer->address().to_string(), context->peer->port());
         socket->close();
         return Error::from_string_literal("Peer sent a handshake with the wrong info hash.");
     }
-    context.got_handshake = true;
-    context.incoming_message_length = 0;
+    context->got_handshake = true;
+    context->incoming_message_length = 0;
 
     return {};
 }
@@ -61,6 +61,16 @@ void Data::add_connection(NonnullRefPtr<Peer> peer, NonnullRefPtr<Torrent> torre
     m_sockets_to_create.enqueue(make<SocketContext>(peer, torrent));
     lock.unlock();
     m_event_loop->post_event(*this, make<Core::CustomEvent>(DataEventType::AddConnection));
+}
+
+ErrorOr<void> Data::send_local_bitfield(Core::TCPSocket* socket, Bits::Data::SocketContext* context)
+{
+    dbgln("Sending bitfield_message");
+    auto local_bitfield = context->torrent->local_bitfield();
+    TRY(socket->write_value(BigEndian<u32>(local_bitfield.data_size() + 1)));
+    TRY(socket->write_value((u8)MessageType::Bitfield));
+    TRY(socket->write_until_depleted(local_bitfield.bytes()));
+    return {};
 }
 
 ErrorOr<void> Data::read_from_socket(Core::TCPSocket* socket)
@@ -78,6 +88,10 @@ ErrorOr<void> Data::read_from_socket(Core::TCPSocket* socket)
             if (TRY(socket->pending_bytes()) >= 2) {
                 dbgln("Socket has at least 2 pending bytes");
                 context->incoming_message_length = TRY(socket->read_value<BigEndian<u32>>());
+                if (context->incoming_message_length == 0) {
+                    dbgln("Received keep-alive");
+                    return {};
+                }
             } else {
                 return {};
             }
@@ -88,7 +102,8 @@ ErrorOr<void> Data::read_from_socket(Core::TCPSocket* socket)
             dbgln("Socket has at least {} pending bytes", context->incoming_message_length);
             if (!context->got_handshake) {
                 dbgln("No handshake yet, trying to read and parse it");
-                read_handshake(socket, *context).release_value();
+                TRY(read_handshake(socket, context));
+                TRY(send_local_bitfield(socket, context));
             } else {
                 auto message_id = TRY(socket->read_value<MessageType>());
                 ByteBuffer buffer = TRY(ByteBuffer::create_uninitialized(context->incoming_message_length - 1));

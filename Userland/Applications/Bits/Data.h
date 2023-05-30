@@ -74,9 +74,10 @@ private:
     Queue<NonnullOwnPtr<SocketContext>> m_sockets_to_create;
     Threading::Mutex m_sockets_to_create_mutex;
     HashMap<Core::TCPSocket*, NonnullOwnPtr<SocketContext>> m_socket_contexts;
-    ErrorOr<void> read_handshake(Core::TCPSocket* socket, SocketContext& context);
+    ErrorOr<void> read_handshake(Core::TCPSocket* socket, SocketContext* context);
     ErrorOr<void> add_new_connections();
     ErrorOr<void> read_from_socket(Core::TCPSocket*);
+    ErrorOr<void> send_local_bitfield(Core::TCPSocket*, SocketContext*);
 };
 
 }

@@ -24,6 +24,8 @@ public:
     u64 size() const { return m_size; }
     u64 data_size() const { return m_data.size(); }
 
+    ReadonlyBytes bytes() const { return m_data.bytes(); }
+
 private:
     u64 m_size;
     ByteBuffer m_data {};
