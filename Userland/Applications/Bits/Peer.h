@@ -8,10 +8,13 @@
 
 #include "AK/OwnPtr.h"
 #include "BitField.h"
+#include "Torrent.h"
 #include <AK/IPv4Address.h>
 #include <AK/Types.h>
 
 namespace Bits {
+
+struct PieceAvailability;
 
 class Peer : public RefCounted<Peer> {
 public:
@@ -33,6 +36,7 @@ public:
     void set_interested_in_peer(bool const value) { m_we_are_interested_in_peer = value; }
 
     auto& incoming_piece() { return m_incoming_piece; }
+    auto& interesting_pieces() { return m_interesting_pieces; }
 
 private:
     const ByteBuffer m_id;
@@ -45,6 +49,8 @@ private:
     bool m_peer_is_interested_in_us { false };
     bool m_we_are_choking_peer { true };
     bool m_we_are_interested_in_peer { false };
+
+    HashMap<u64, nullptr_t> m_interesting_pieces;
 
     struct {
         ByteBuffer data;

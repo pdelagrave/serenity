@@ -17,7 +17,7 @@ enum class MessageType : u8 {
     Choke = 0x00,
     Unchoke = 0x01,
     Interested = 0x02,
-    NotInterest = 0x03,
+    NotInterested = 0x03,
     Have = 0x04,
     Bitfield = 0x05,
     Request = 0x06,
@@ -89,9 +89,9 @@ private:
     ErrorOr<void> add_new_connections();
     ErrorOr<void> read_from_socket(Core::TCPSocket*);
     ErrorOr<void> send_local_bitfield(Core::TCPSocket*, SocketContext*);
-    ErrorOr<bool> update_piece_availability(u64 piece_index, NonnullRefPtr<Torrent>& torrent);
-    ErrorOr<void> receive_bitfield(Core::TCPSocket*, ReadonlyBytes const&, SocketContext*);
-
+    ErrorOr<bool> update_piece_availability(u64 piece_index, SocketContext* context);
+    ErrorOr<void> receive_bitfield(ReadonlyBytes const&, SocketContext*);
+    ErrorOr<void> insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_index);
     ErrorOr<void> handle_piece_downloaded(Bits::PieceDownloadedCommand const& command);
     ErrorOr<void> handle_have(SocketContext* context, Stream& stream);
     ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<Torrent>& torrent);

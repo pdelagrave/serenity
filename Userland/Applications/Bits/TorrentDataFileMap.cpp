@@ -75,7 +75,7 @@ ErrorOr<size_t> MultiFileMapperStream::seek(i64 offset, SeekMode mode)
 
     m_current_file = *mapped_file_position;
     u64 prev_relative_zero_offset = m_current_file->file_index == 0 ? 0 : m_files_positions->at(m_current_file->file_index - 1)->relative_zero_offset;
-    dbgln("m_current_file->file_index: {}, prev_relative_zero_offset: {}", m_current_file->file_index, prev_relative_zero_offset);
+    //dbgln("m_current_file->file_index: {}, prev_relative_zero_offset: {}", m_current_file->file_index, prev_relative_zero_offset);
     TRY(m_current_file->fs_file.value()->seek(offset - prev_relative_zero_offset, SeekMode::SetPosition));
     m_current_offset = (u64) offset;
 
@@ -137,7 +137,6 @@ ErrorOr<void> MultiFileMapperStream::write_until_depleted(ReadonlyBytes buffer)
         m_current_offset += result.value();
         nwritten += result.value();
     }
-    dbgln("wrote {} bytes in total", nwritten);
 
     return {};
 }

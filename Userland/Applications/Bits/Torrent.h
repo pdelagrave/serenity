@@ -15,6 +15,7 @@
 
 namespace Bits {
 
+class Peer;
 
 enum class TorrentState {
     ERROR,
@@ -32,6 +33,7 @@ struct PieceAvailability : public RefCounted<PieceAvailability> {
     }
     Optional<size_t> index_in_heap = {};
     u64 index_in_torrent;
+    HashMap<NonnullRefPtr<Peer>, nullptr_t> havers;
 };
 
 class Torrent : public RefCounted<Torrent> {
