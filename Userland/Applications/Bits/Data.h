@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "Applications/Bits/Data/Command.h"
 #include "Peer.h"
 #include "Torrent.h"
 #include <LibThreading/Mutex.h>
@@ -55,7 +56,10 @@ class Data : public Core::Object {
 
 public:
     Data();
+    ~Data();
     void add_connection(NonnullRefPtr<Peer>, NonnullRefPtr<Torrent> torrent);
+    virtual void event(Core::Event& event) override;
+    u16 max_active_peers = 10;
 
 protected:
     void custom_event(Core::CustomEvent& event) override;
@@ -65,7 +69,11 @@ private:
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
 
+    // TODO: Use a HashSet or the like instead
+    HashMap<NonnullRefPtr<Peer>, nullptr_t> m_active_peers;
+
     struct SocketContext {
+        Core::TCPSocket* socket;
         NonnullRefPtr<Peer> peer;
         NonnullRefPtr<Torrent> torrent;
         bool got_handshake = false;
@@ -75,12 +83,16 @@ private:
 
     Queue<NonnullOwnPtr<SocketContext>> m_sockets_to_create;
     Threading::Mutex m_sockets_to_create_mutex;
-    HashMap<Core::TCPSocket*, NonnullOwnPtr<SocketContext>> m_socket_contexts;
+    HashMap<Core::TCPSocket*, SocketContext*> m_socket_contexts;
+    HashMap<NonnullRefPtr<Peer>, SocketContext*> m_peer_to_socket_context;
     ErrorOr<void> read_handshake(Stream& bytes, SocketContext* context);
     ErrorOr<void> add_new_connections();
     ErrorOr<void> read_from_socket(Core::TCPSocket*);
     ErrorOr<void> send_local_bitfield(Core::TCPSocket*, SocketContext*);
     ErrorOr<void> receive_bitfield(Core::TCPSocket*, ReadonlyBytes const&, SocketContext*);
+
+    ErrorOr<void> handle_piece_downloaded(Bits::PieceDownloadedCommand const& command);
+    ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<Torrent>& torrent);
 };
 
 }

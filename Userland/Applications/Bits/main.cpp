@@ -26,10 +26,19 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
     window->resize(640, 400);
 
     auto engine = TRY(Bits::Engine::try_create());
-
     auto bits_widget = TRY(window->set_main_widget<Bits::BitsWidget>(engine));
 
-    bits_widget->initialize_menubar(*window);
+    auto& file_menu = window->add_menu("&File"_string.release_value());
+    file_menu.add_action(GUI::CommonActions::make_open_action([&window, &bits_widget](auto&) {
+        auto x = FileSystemAccessClient::Client::the().open_file(window, {}, Core::StandardPaths::home_directory(), Core::File::OpenMode::Read);
+        bits_widget->open_file(x.value().filename(), x.value().release_stream()).release_value();
+    }));
+
+    file_menu.add_action(GUI::CommonActions::make_quit_action([&](auto&) {
+        window->close();
+        app->quit();
+    }));
+
     window->show();
     window->set_icon(app_icon.bitmap_for_size(16));
 

@@ -28,7 +28,8 @@ BitField::BitField(ByteBuffer data)
 
 bool BitField::get(u64 index) const
 {
-    VERIFY(index < m_size);
+    if (index >= m_size) // useful for when the peer exists, and we haven't received its bitfield yet
+        return false;
     return m_data[index / 8] & (1 << (7 - (index % 8)));
 }
 

@@ -17,11 +17,13 @@ class Engine : public Core::Object {
 
 public:
     static ErrorOr<NonnullRefPtr<Engine>> try_create();
+    ~Engine();
 
     Vector<NonnullRefPtr<Torrent>> torrents() { return m_torrents; }
     void add_torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
     void start_torrent(int);
     void stop_torrent(int);
+    void cancel_checking(int);
 
 protected:
     virtual void timer_event(Core::TimerEvent&) override;

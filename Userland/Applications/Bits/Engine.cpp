@@ -27,7 +27,7 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
         }
 
         NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(local_files));
-        m_torrents.append(torrent);
+        m_torrents.append(move(torrent));
     });
 }
 
@@ -136,19 +136,19 @@ void Engine::start_torrent(int torrent_id)
             f->close();
         }
 
-        torrent->checking_in_background([this, torrent, origin_event_loop = &Core::EventLoop::current()] {
+        torrent->checking_in_background([this, torrent = move(torrent), origin_event_loop = &Core::EventLoop::current()] {
             // Checking finished callback, still on the background thread
             torrent->set_state(TorrentState::STARTED);
             // announcing using the UI thread/loop:
-            origin_event_loop->deferred_invoke([this, torrent] {
+            origin_event_loop->deferred_invoke([this, torrent = move(torrent)] {
                 dbgln("we have {}/{} pieces", torrent->local_bitfield().ones(), torrent->piece_count());
-                announce(torrent, [this, torrent] {
+                announce(torrent, [this, torrent = move(torrent)] {
                     // announce finished callback, now on the UI loop/thread
                     for (int i = 0; i < min(5, torrent->peers().size()); i++) {
                         auto& peer = torrent->peers()[i];
                         if (peer->id() == torrent->local_peer_id())
                             continue;
-                        data.add_connection(peer, torrent);
+                        data.add_connection(peer, move(torrent));
                     }
                 }).release_value_but_fixme_should_propagate_errors();
             });
@@ -161,6 +161,13 @@ void Engine::stop_torrent(int torrent_id)
     dbgln("stop_torrent({})", torrent_id);
     // todo: support stopping the torrent transfer and also stopping the checking if that's the current state.
     TODO();
+}
+
+void Engine::cancel_checking(int torrent_id)
+{
+    auto torrent = m_torrents.at(torrent_id);
+    torrent->cancel_checking();
+    torrent->set_state(TorrentState::STOPPED);
 }
 
 ErrorOr<String> Engine::url_encode_bytes(u8 const* bytes, size_t length)
@@ -238,6 +245,14 @@ ErrorOr<String> Engine::hexdump(ReadonlyBytes bytes)
 Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client)
     : m_protocol_client(protocol_client)
 {
+}
+
+Engine::~Engine() {
+    dbgln("Engine::~Engine()");
+    for (auto torrent : m_torrents) {
+        torrent->cancel_checking();
+    }
+    m_torrents.clear();
 }
 
 ErrorOr<NonnullRefPtr<Engine>> Engine::try_create()

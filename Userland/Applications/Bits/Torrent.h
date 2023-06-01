@@ -20,7 +20,8 @@ enum class TorrentState {
     ERROR,
     CHECKING,
     STOPPED,
-    STARTED
+    STARTED,
+    SEEDING
 };
 ErrorOr<String> state_to_string(TorrentState state);
 
@@ -38,6 +39,7 @@ class Torrent : public RefCounted<Torrent> {
     using MissingPieceMap = AK::HashMap<u64, RefPtr<PieceAvailability>>;
 public:
     Torrent(NonnullOwnPtr<MetaInfo>, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>>);
+    ~Torrent();
     MetaInfo& meta_info() { return *m_meta_info; }
     u64 piece_count() const { return m_piece_count; }
     ReadonlyBytes local_peer_id() const { return m_local_peer_id.bytes(); }
@@ -53,9 +55,12 @@ public:
     int check_progress() const { return m_piece_verified * 100 / m_piece_count; }
 
     void checking_in_background(Function<void()> on_complete);
+    void cancel_checking();
 
     MissingPieceHeap& piece_heap() { return m_piece_heap; }
     MissingPieceMap& missing_pieces() { return m_missing_pieces; }
+
+    u64 piece_length(u64 piece_index) const;
 
 private:
     NonnullOwnPtr<MetaInfo> m_meta_info;

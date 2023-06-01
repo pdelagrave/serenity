@@ -34,7 +34,7 @@ public:
     bool is_eof() const override;
     bool is_open() const override;
     void close() override;
-    ~MultiFileMapperStream() override = default;
+    ~MultiFileMapperStream();
 
     u64 total_length() const { return m_total_length; }
 

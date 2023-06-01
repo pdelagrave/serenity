@@ -19,6 +19,8 @@ ErrorOr<String> state_to_string(TorrentState state)
         return "Started"_string;
     case TorrentState::CHECKING:
         return "Checking"_string;
+    case TorrentState::SEEDING:
+        return "Seeding"_string;
     default:
         VERIFY_NOT_REACHED();
     }
@@ -37,6 +39,13 @@ Torrent::Torrent(NonnullOwnPtr<MetaInfo> meta_info, NonnullOwnPtr<Vector<Nonnull
     fill_with_random({ m_local_peer_id.data(), m_local_peer_id.size() });
 }
 
+Torrent::~Torrent()
+{
+    dbgln("Torrent::~Torrent()");
+    if (m_background_checker)
+        m_background_checker->cancel();
+}
+
 void Torrent::checking_in_background(Function<void()> on_complete)
 {
     //    on_complete();
@@ -52,7 +61,6 @@ void Torrent::checking_in_background(Function<void()> on_complete)
                 local_bitfield().set(i, is_present);
                 if (!is_present)
                     m_missing_pieces.set(i, make_ref_counted<PieceAvailability>(i));
-
             }
 
             return 0;
@@ -65,6 +73,23 @@ void Torrent::checking_in_background(Function<void()> on_complete)
             m_state = TorrentState::ERROR;
             warnln("Error checking torrent: {}", error);
         });
+}
+
+void Torrent::cancel_checking()
+{
+    if (m_background_checker) {
+        m_background_checker->cancel();
+        m_background_checker.clear();
+    }
+}
+
+u64 Torrent::piece_length(u64 piece_index) const
+{
+    VERIFY(piece_index < piece_count());
+    if (piece_index == piece_count() - 1)
+        return m_meta_info->total_length() % m_meta_info->piece_length();
+    else
+        return m_meta_info->piece_length();
 }
 
 }

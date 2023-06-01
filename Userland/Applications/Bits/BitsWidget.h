@@ -19,11 +19,9 @@ class BitsWidget final : public GUI::Widget {
 public:
     virtual ~BitsWidget() override = default;
     ErrorOr<void> open_file(String const& filename, NonnullOwnPtr<Core::File>);
-    void initialize_menubar(GUI::Window&);
 
 private:
     BitsWidget(NonnullRefPtr<Engine>);
-    RefPtr<GUI::Action> m_open_action;
     RefPtr<GUI::Menu> m_torrent_context_menu;
 
     RefPtr<GUI::TableView> m_torrents_table_view;

@@ -27,6 +27,11 @@ NonnullOwnPtr<MultiFileMapperStream> MultiFileMapperStream::create(NonnullOwnPtr
     return adopt_nonnull_own_or_enomem(new (nothrow) MultiFileMapperStream(move(files_positions), total_length)).release_value_but_fixme_should_propagate_errors();
 }
 
+MultiFileMapperStream::~MultiFileMapperStream()
+{
+    close();
+}
+
 ErrorOr<void> MultiFileMapperStream::read_until_filled(Bytes buffer)
 {
     size_t nread = 0;
@@ -79,46 +84,77 @@ ErrorOr<size_t> MultiFileMapperStream::seek(i64 offset, SeekMode mode)
 
 ErrorOr<void> MultiFileMapperStream::truncate(size_t)
 {
-    return ErrorOr<void>();
+    VERIFY_NOT_REACHED();
 }
 ErrorOr<size_t> MultiFileMapperStream::tell() const
 {
-    return SeekableStream::tell();
+    VERIFY_NOT_REACHED();
 }
 ErrorOr<size_t> MultiFileMapperStream::size()
 {
-    return SeekableStream::size();
+    return m_total_length;
 }
-ErrorOr<void> MultiFileMapperStream::discard(size_t discarded_bytes)
+ErrorOr<void> MultiFileMapperStream::discard(size_t)
 {
-    return SeekableStream::discard(discarded_bytes);
+    VERIFY_NOT_REACHED();
 }
 ErrorOr<Bytes> MultiFileMapperStream::read_some(Bytes bytes)
 {
     return current_fs_file().read_some(bytes);
 }
-ErrorOr<ByteBuffer> MultiFileMapperStream::read_until_eof(size_t block_size)
+ErrorOr<ByteBuffer> MultiFileMapperStream::read_until_eof(size_t)
 {
-    return Stream::read_until_eof(block_size);
+    VERIFY_NOT_REACHED();
 }
-ErrorOr<size_t> MultiFileMapperStream::write_some(ReadonlyBytes)
+ErrorOr<size_t> MultiFileMapperStream::write_some(ReadonlyBytes bytes)
 {
-    return 1;
+    return current_fs_file().write_some(bytes);
 }
-ErrorOr<void> MultiFileMapperStream::write_until_depleted(ReadonlyBytes bytes)
+
+// TODO test writing a piece that spans multiple files
+ErrorOr<void> MultiFileMapperStream::write_until_depleted(ReadonlyBytes buffer)
 {
-    return Stream::write_until_depleted(bytes);
+    size_t nwritten = 0;
+    while (nwritten < buffer.size()) {
+        if (current_fs_file().is_eof()) {
+            dbgln("Writing to file but the current one is eof {}, moving to {}", m_current_file->file_index, m_current_file->file_index + 1);
+            if (m_current_file->file_index == m_files_positions->size() - 1)
+                return Error::from_string_view_or_print_error_and_return_errno("Reached end-of-file before filling the entire buffer"sv, EIO);
+
+            m_current_file = m_files_positions->at(m_current_file->file_index + 1);
+            TRY(current_fs_file().seek(0, SeekMode::SetPosition));
+        }
+
+        auto result = write_some(buffer.slice(nwritten));
+        if (result.is_error()) {
+            if (result.error().is_errno() && result.error().code() == EINTR) {
+                continue;
+            }
+
+            return result.release_error();
+        }
+
+        m_current_offset += result.value();
+        nwritten += result.value();
+    }
+    dbgln("wrote {} bytes in total", nwritten);
+
+    return {};
 }
 bool MultiFileMapperStream::is_eof() const
 {
-    return false;
+    VERIFY_NOT_REACHED();
 }
 bool MultiFileMapperStream::is_open() const
 {
-    return false;
+    VERIFY_NOT_REACHED();
 }
 void MultiFileMapperStream::close()
 {
+    for (auto fp : *m_files_positions) {
+        if (fp->fs_file.has_value())
+            fp->fs_file.value()->close();
+    }
 }
 
 TorrentDataFileMap::TorrentDataFileMap(ByteBuffer piece_hashes, i64 piece_length, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> files)
