@@ -6,6 +6,7 @@
 
 #include "Engine.h"
 #include <AK/LexicalPath.h>
+#include <LibCore/System.h>
 #include <LibFileSystem/FileSystem.h>
 #include <LibProtocol/Request.h>
 
@@ -127,16 +128,17 @@ void Engine::start_torrent(int torrent_id)
                 return;
             }
             auto f = fe.release_value();
-            auto x = f->truncate(local_file->meta_info_file()->length());
+
+            auto x = Core::System::posix_fallocate(f->fd(), 0, local_file->meta_info_file()->length());
             if (x.is_error()) {
-                dbgln("error truncating file: {}", x.error());
+                dbgln("error posix_fallocating file: {}", x.error());
                 torrent->set_state(TorrentState::ERROR);
                 return;
             }
             f->close();
         }
 
-        torrent->checking_in_background([this, torrent = move(torrent), origin_event_loop = &Core::EventLoop::current()] {
+        torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent = move(torrent), origin_event_loop = &Core::EventLoop::current()] {
             // Checking finished callback, still on the background thread
             torrent->set_state(TorrentState::STARTED);
             // announcing using the UI thread/loop:
@@ -242,12 +244,15 @@ ErrorOr<String> Engine::hexdump(ReadonlyBytes bytes)
     return builder.to_string();
 }
 
-Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client)
+Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip_checking, bool assume_valid)
     : m_protocol_client(protocol_client)
+    , m_skip_checking(skip_checking)
+    , m_assume_valid(assume_valid)
 {
 }
 
-Engine::~Engine() {
+Engine::~Engine()
+{
     dbgln("Engine::~Engine()");
     for (auto torrent : m_torrents) {
         torrent->cancel_checking();
@@ -255,10 +260,10 @@ Engine::~Engine() {
     m_torrents.clear();
 }
 
-ErrorOr<NonnullRefPtr<Engine>> Engine::try_create()
+ErrorOr<NonnullRefPtr<Engine>> Engine::try_create(bool skip_checking, bool assume_valid)
 {
     auto protocol_client = TRY(Protocol::RequestClient::try_create());
-    return adopt_nonnull_ref_or_enomem(new (nothrow) Engine(move(protocol_client)));
+    return adopt_nonnull_ref_or_enomem(new (nothrow) Engine(move(protocol_client), skip_checking, assume_valid));
 }
 
 }

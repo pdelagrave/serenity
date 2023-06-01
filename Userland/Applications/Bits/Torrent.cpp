@@ -46,18 +46,16 @@ Torrent::~Torrent()
         m_background_checker->cancel();
 }
 
-void Torrent::checking_in_background(Function<void()> on_complete)
+void Torrent::checking_in_background(bool skip, bool assume_valid, Function<void()> on_complete)
 {
-    //    on_complete();
-    //    return;
     m_background_checker = Threading::BackgroundAction<int>::construct(
-        [this](auto& task) -> ErrorOr<int> {
+        [this, skip, assume_valid](auto& task) -> ErrorOr<int> {
             m_piece_verified = 0;
             for (u64 i = 0; i < piece_count(); i++) {
                 m_piece_verified++;
                 if (task.is_canceled())
                     return Error::from_errno(ECANCELED);
-                bool is_present = TRY(data_file_map()->check_piece(i, i == piece_count() - 1));
+                bool is_present = skip ? assume_valid : TRY(data_file_map()->check_piece(i, i == piece_count() - 1));
                 local_bitfield().set(i, is_present);
                 if (!is_present)
                     m_missing_pieces.set(i, make_ref_counted<PieceAvailability>(i));

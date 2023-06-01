@@ -56,7 +56,7 @@ public:
     int progress() const { return m_local_bitfield.ones() * 100 / m_piece_count; }
     int check_progress() const { return m_piece_verified * 100 / m_piece_count; }
 
-    void checking_in_background(Function<void()> on_complete);
+    void checking_in_background(bool skip, bool assume_valid, Function<void()> on_complete);
     void cancel_checking();
 
     MissingPieceHeap& piece_heap() { return m_piece_heap; }

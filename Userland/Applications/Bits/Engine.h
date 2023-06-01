@@ -16,7 +16,7 @@ class Engine : public Core::Object {
     C_OBJECT(Engine);
 
 public:
-    static ErrorOr<NonnullRefPtr<Engine>> try_create();
+    static ErrorOr<NonnullRefPtr<Engine>> try_create(bool skip_checking, bool assume_valid);
     ~Engine();
 
     Vector<NonnullRefPtr<Torrent>> torrents() { return m_torrents; }
@@ -29,7 +29,7 @@ protected:
     virtual void timer_event(Core::TimerEvent&) override;
 
 private:
-    Engine(NonnullRefPtr<Protocol::RequestClient>);
+    Engine(NonnullRefPtr<Protocol::RequestClient>, bool skip_checking, bool assume_valid);
     static ErrorOr<String> url_encode_bytes(u8 const* bytes, size_t length);
     static ErrorOr<String> hexdump(ReadonlyBytes);
     static ErrorOr<void> create_file(DeprecatedString const& path);
@@ -41,6 +41,8 @@ private:
     ErrorOr<void> announce(Torrent&, Function<void()> on_complete);
 
     Data data;
+    bool m_skip_checking;
+    bool m_assume_valid;
 };
 
 }
