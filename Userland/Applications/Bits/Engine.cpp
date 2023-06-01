@@ -147,10 +147,7 @@ void Engine::start_torrent(int torrent_id)
                 announce(torrent, [this, torrent = move(torrent)] {
                     // announce finished callback, now on the UI loop/thread
                     for (int i = 0; i < min(5, torrent->peers().size()); i++) {
-                        auto& peer = torrent->peers()[i];
-                        if (peer->id() == torrent->local_peer_id())
-                            continue;
-                        data.add_connection(peer, move(torrent));
+                        data.add_connection(torrent->peers()[i], move(torrent));
                     }
                 }).release_value_but_fixme_should_propagate_errors();
             });
@@ -191,7 +188,8 @@ ErrorOr<void> Engine::announce(Torrent& torrent, Function<void()> on_complete)
     // should be generated per session per torrent.
     u64 key = get_random<u64>();
 
-    url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&compact=0&uploaded=1&downloaded=1&left=2&key={}", info_hash, my_peer_id, torrent.local_port(), key)).to_deprecated_string());
+    url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&uploaded=1&downloaded=1&left=2&key={}", info_hash, my_peer_id, torrent.local_port(), key)).to_deprecated_string());
+    dbgln("query: {}", url.query());
     auto request = m_protocol_client->start_request("GET", url);
     m_active_requests.set(*request);
 
@@ -199,24 +197,30 @@ ErrorOr<void> Engine::announce(Torrent& torrent, Function<void()> on_complete)
         auto err = [&]() -> ErrorOr<void> {
             dbgln("We got back the payload, size: {}, success: {}, status_code: {}, torrent state: {}", total_size, success, status_code, state_to_string(torrent.state()));
             auto response = TRY(BDecoder::parse<Dict>(payload));
-            dbgln("keys {}", response.keys().size());
 
             if (response.contains("failure reason")) {
                 dbgln("Failure:  {}", response.get_string("failure reason"));
                 return {};
             }
-            dbgln("interval: {}", response.get<i64>("interval"));
-            auto peers = response.get<List>("peers");
-            dbgln("peer len: {}", peers.size());
-
-            for (auto peer : peers) {
-                auto peer_dict = peer.get<Dict>();
-                Optional<IPv4Address> const& ip_address = IPv4Address::from_string(peer_dict.get_string("ip"));
-                // TODO: check if ip string is a host name and resolve it.
-                VERIFY(ip_address.has_value());
-                auto p = make_ref_counted<Peer>(peer_dict.get<ByteBuffer>("peer id"), ip_address.value(), peer_dict.get<i64>("port"));
-                torrent.peers().append(p);
-                dbgln("peer: {}  ip: {}, port: {}", hexdump(p->id()).release_value(), p->address().to_string().release_value(), p->port());
+            //dbgln("interval: {}", response.get<i64>("interval"));
+            if (response.has<List>("peers")) {
+                for (auto peer : response.get<List>("peers")) {
+                    auto peer_dict = peer.get<Dict>();
+                    Optional<IPv4Address> const& ip_address = IPv4Address::from_string(peer_dict.get_string("ip"));
+                    // TODO: check if ip string is a host name and resolve it.
+                    VERIFY(ip_address.has_value());
+                    auto p = make_ref_counted<Peer>(ip_address.value(), peer_dict.get<i64>("port"));
+                    torrent.peers().append(p);
+                }
+            } else {
+                // https://www.bittorrent.org/beps/bep_0023.html "compact" peers list
+                auto peers_bytes = response.get<ByteBuffer>("peers");
+                VERIFY(peers_bytes.size() % 6 == 0);
+                auto stream = FixedMemoryStream(peers_bytes.bytes());
+                while (!stream.is_eof()) {
+                    auto p = make_ref_counted<Peer>(TRY(stream.read_value<NetworkOrdered<u32>>()), TRY(stream.read_value<NetworkOrdered<u16>>()));
+                    torrent.peers().append(p);
+                }
             }
 
             on_complete();

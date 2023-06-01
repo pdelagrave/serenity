@@ -18,8 +18,8 @@ struct PieceAvailability;
 
 class Peer : public RefCounted<Peer> {
 public:
-    Peer(ByteBuffer const& id, IPv4Address const& address, u16 const port);
-    ReadonlyBytes id() { return m_id.bytes(); }
+    Peer(IPv4Address address, u16 port);
+    Optional<ReadonlyBytes> id() { return m_id->bytes(); }
     IPv4Address const& address() { return m_address; }
     u16 port() { return m_port; }
 
@@ -39,7 +39,7 @@ public:
     auto& interesting_pieces() { return m_interesting_pieces; }
 
 private:
-    const ByteBuffer m_id;
+    Optional<ByteBuffer> m_id;
     const IPv4Address m_address;
     const u16 m_port;
     BitField m_bitfield = {0};

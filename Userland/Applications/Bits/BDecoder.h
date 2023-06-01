@@ -33,6 +33,12 @@ public:
         return OrderedHashMap<DeprecatedString, BEncodingType>::get(key).value().get<T>();
     }
 
+    template<typename T>
+    bool has(DeprecatedString key)
+    {
+        return OrderedHashMap<DeprecatedString, BEncodingType>::get(key).value().has<T>();
+    }
+
     DeprecatedString get_string(DeprecatedString key)
     {
         return DeprecatedString::from_utf8(get<ByteBuffer>(key).bytes()).release_value();
