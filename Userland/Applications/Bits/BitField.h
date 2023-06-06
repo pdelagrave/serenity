@@ -14,7 +14,7 @@ namespace Bits {
 class BitField {
 public:
     BitField(u64 size);
-    BitField(ByteBuffer data);
+    BitField(ByteBuffer data, u64 size);
 
     bool get(u64 index) const;
     void set(u64 index, bool value);

@@ -146,7 +146,10 @@ void Engine::start_torrent(int torrent_id)
                 dbgln("we have {}/{} pieces", torrent->local_bitfield().ones(), torrent->piece_count());
                 announce(torrent, [this, torrent = move(torrent)] {
                     // announce finished callback, now on the UI loop/thread
-                    for (int i = 0; i < min(5, torrent->peers().size()); i++) {
+                    int max_peers = 10;
+                    int peers_to_add = min(max_peers, torrent->peers().size());
+                    dbgln("Total peers {}, adding {}:", torrent->peers().size(), peers_to_add);
+                    for (int i = 0; i < peers_to_add; i++) {
                         data.add_connection(torrent->peers()[i], move(torrent));
                     }
                 }).release_value_but_fixme_should_propagate_errors();

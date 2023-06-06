@@ -6,7 +6,9 @@
 
 #include "Data.h"
 #include "Applications/Bits/Data/Command.h"
+#include "sys/select.h"
 #include <LibCore/Socket.h>
+#include <LibCore/System.h>
 
 namespace Bits {
 
@@ -65,7 +67,7 @@ ErrorOr<void> Data::read_handshake(Stream& stream, SocketContext* context)
 
 void Data::add_connection(NonnullRefPtr<Peer> peer, NonnullRefPtr<Torrent> torrent)
 {
-    dbgln("Adding connection to peer {}:{}.", peer->address().to_string(), peer->port());
+    dbgln("Trying to connect with peer {}", peer);
     Threading::MutexLocker lock(m_sockets_to_create_mutex);
     lock.lock();
     m_sockets_to_create.enqueue(make<SocketContext>(nullptr, peer, torrent));
@@ -88,22 +90,24 @@ ErrorOr<bool> Data::update_piece_availability(u64 piece_index, SocketContext* so
     auto& torrent = socket_context->torrent;
     auto& peer = socket_context->peer;
     auto is_missing = torrent->missing_pieces().get(piece_index);
-    if (!is_missing.has_value())
+    if (!is_missing.has_value()) {
+        dbgln("Peer {} has piece {} but we already have it.", peer, piece_index);
         return false;
+    }
 
-    auto& piece_av = is_missing.value();
-    piece_av->havers.set(peer, nullptr);
+    RefPtr<PieceStatus> piece_status = is_missing.value();
+    piece_status->havers.set(peer, nullptr);
+    if (!piece_status->currently_downloading) {
+        auto& heap = torrent->piece_heap();
+        if (piece_status->index_in_heap.has_value()) {
+            heap.update(*piece_status);
+        } else {
+            heap.insert(*piece_status);
+        }
+    }
 
-    auto& heap = torrent->piece_heap();
-    size_t new_index_in_heap;
-    if (piece_av->index_in_heap.has_value())
-        new_index_in_heap = heap.update_key(piece_av->index_in_heap.value(), piece_av->havers.size());
-    else
-        new_index_in_heap = heap.insert(1, piece_av);
-
-    piece_av->index_in_heap.emplace(new_index_in_heap);
     peer->interesting_pieces().set(piece_index, nullptr);
-    
+
     if (!peer->is_interested_in_peer()) {
         peer->set_interested_in_peer(true);
 
@@ -131,7 +135,7 @@ ErrorOr<void> Data::receive_bitfield(ReadonlyBytes const& bytes, Bits::Data::Soc
         warnln("Bitfield sent by peer has a size ({}) different than expected({})", bytes.size(), bitfield_data_size);
         return Error::from_string_literal("Bitfield sent by peer has a size different than expected");
     }
-    context->peer->set_bitbield(BitField(TRY(ByteBuffer::copy(bytes))));
+    context->peer->set_bitbield(BitField(TRY(ByteBuffer::copy(bytes)), context->torrent->piece_count()));
     dbgln("Set bitfield for peer {}:{}. size: {} data_size: {}", context->peer->address().to_string(), context->peer->port(), context->peer->bitfield().size(), context->peer->bitfield().data_size());
 
     for (auto& missing_piece : context->torrent->missing_pieces()) {
@@ -158,9 +162,9 @@ ErrorOr<void> Data::piece_or_peer_availability_updated(NonnullRefPtr<Torrent>& t
             if (!m_peer_to_socket_context.contains(peer)) // filter out peers we failed to connect with, gotta improve this.
                 continue;
 
-            dbgln("Peer {} is choking us: {}, is active: {}", peer->address().to_string(), peer->is_choking_us(), m_active_peers.contains(peer));
+            dbgln("Peer {} is choking us: {}, is active: {}", peer, peer->is_choking_us(), m_active_peers.contains(peer));
             if (!peer->is_choking_us() && !m_active_peers.contains(peer)) {
-                dbgln("Requesting piece {} from peer {}", next_piece_index, peer->address().to_string());
+                dbgln("Requesting piece {} from peer {}", next_piece_index, peer);
                 m_active_peers.set(peer, nullptr);
                 auto socket = m_peer_to_socket_context.get(peer).value()->socket;
                 TRY(socket->write_value(BigEndian<u32>(13)));
@@ -173,7 +177,10 @@ ErrorOr<void> Data::piece_or_peer_availability_updated(NonnullRefPtr<Torrent>& t
             }
         }
         if (found_peer) {
-            VERIFY(torrent->piece_heap().pop_min()->index_in_torrent == next_piece_index);
+            dbgln("Found peer for piece {}, popping the piece from the heap", next_piece_index);
+            auto piece_status = torrent->piece_heap().pop_min();
+            piece_status->currently_downloading = true;
+            VERIFY(piece_status->index_in_torrent == next_piece_index);
         } else {
             dbgln("No more available peer to download piece {}", next_piece_index);
             break;
@@ -182,21 +189,17 @@ ErrorOr<void> Data::piece_or_peer_availability_updated(NonnullRefPtr<Torrent>& t
     return {};
 }
 
-ErrorOr<void> Data::read_from_socket(Core::TCPSocket* socket)
+ErrorOr<void> Data::read_from_socket(SocketContext* context)
 {
     // TODO: cleanup this mess, read everything we can in a buffer at every call first.
-    auto maybe_context = m_socket_contexts.get(socket);
-    VERIFY(maybe_context.has_value());
-    auto& context = maybe_context.value();
     auto& peer = context->peer;
-    //    dbgln("Reading from socket with peer {}:{}.", peer->address().to_string(), peer->port());
-    //    dbgln("socket is eof: {}", socket->is_eof());
-    //    dbgln("socket is open: {}", socket->is_open());
+    auto& socket = context->socket;
+    //dbgln("Reading from socket with peer {}:{}.", peer->address().to_string(), peer->port());
 
     // hack:
     if (TRY(socket->pending_bytes()) == 0) {
-        dbgln("Socket has no pending bytes, reading and writing to it to force receiving a RST");
-        // remote host probably closed the connection, reading from the socket to force receiving a RST and having the connection being fully closed on our side.
+        dbgln("Socket {}:{} has no pending bytes, reading and writing to it to force receiving an RST", peer->address().to_deprecated_string(), peer->port());
+        // remote host probably closed the connection, reading from the socket to force receiving an RST and having the connection being fully closed on our side.
         TRY(socket->read_some(ByteBuffer::create_uninitialized(1).release_value().bytes()));
         TRY(socket->write_value(BigEndian<u32>(0)));
         return {};
@@ -269,7 +272,7 @@ ErrorOr<void> Data::read_from_socket(Core::TCPSocket* socket)
                     dbgln("Got message type Request, unsupported");
                     break;
                 case MessageType::Piece: {
-                    dbgln("Got message type Piece");
+                    //dbgln("Got message type Piece");
                     auto block_size = TRY(message_stream.size()) - 9;
                     auto index = TRY(message_stream.read_value<BigEndian<u32>>());
                     auto begin = TRY(message_stream.read_value<BigEndian<u32>>());
@@ -294,14 +297,14 @@ ErrorOr<void> Data::read_from_socket(Core::TCPSocket* socket)
                         m_active_peers.remove(peer);
                     } else {
                         if (peer->is_choking_us()) {
-                            dbgln("Weren't done downloading the blocks for this piece, but peer is choking us, so we're giving up on it");
+                            dbgln("Weren't done downloading the blocks for this piece {}, but peer {} is choking us, so we're giving up on it", piece.index.value(), peer);
                             piece.index = {};
                             m_active_peers.remove(peer);
                             TRY(insert_piece_in_heap(context->torrent, index));
                             TRY(piece_or_peer_availability_updated(context->torrent));
                         } else {
                             auto next_block_length = min((size_t)BlockLength, (size_t)piece.length - piece.offset);
-                            dbgln("Sending next request for piece {} at offset {}/{} blocklen: {}", index, piece.offset, piece.length, next_block_length);
+                            //dbgln("Sending next request for piece {} at offset {}/{} blocklen: {}", index, piece.offset, piece.length, next_block_length);
                             TRY(socket->write_value(BigEndian<u32>(13)));
                             TRY(socket->write_value((u8)MessageType::Request));
                             TRY(socket->write_value(BigEndian<u32>(index)));
@@ -326,14 +329,16 @@ ErrorOr<void> Data::read_from_socket(Core::TCPSocket* socket)
 
 ErrorOr<void> Data::insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_index)
 {
-    auto piece_av = torrent->missing_pieces().get(piece_index).value();
-    piece_av->index_in_heap = torrent->piece_heap().insert(piece_av->havers.size(), piece_av);
+    auto piece_status = torrent->missing_pieces().get(piece_index).value();
+    piece_status->currently_downloading = false;
+    torrent->piece_heap().insert(*piece_status);
     return {};
 }
 
 ErrorOr<void> Data::handle_have(Bits::Data::SocketContext* context, AK::Stream& stream)
 {
     auto piece_index = TRY(stream.read_value<BigEndian<u32>>());
+    dbgln("Peer {} has piece {}, setting in peer bitfield, bitfield size: {}", context->peer->address().to_deprecated_string(), piece_index, context->peer->bitfield().size());
     context->peer->bitfield().set(piece_index, true);
     TRY(update_piece_availability(piece_index, context));
     return {};
@@ -360,25 +365,52 @@ ErrorOr<void> Data::add_new_connections()
     lock.unlock();
 
     for (auto& context : to_add) {
-        auto peer = context->peer;
-        auto torrent = context->torrent;
-        auto connect_error = Core::TCPSocket::connect(peer->address().to_deprecated_string(), peer->port());
-        if (connect_error.is_error()) {
-            dbgln("Failed to connect to peer {}:{}", peer->address().to_string(), peer->port());
-        } else {
-            auto socket = connect_error.release_value().leak_ptr();
-            context->socket = socket;
-            SocketContext* context_ptr = context.leak_ptr();
-            m_socket_contexts.set(socket, context_ptr);
-            m_peer_to_socket_context.set(peer, context_ptr);
-            socket->on_ready_to_read = [this, socket] {
-                auto err = read_from_socket(socket);
-                if (err.is_error())
-                    dbgln("Error reading from socket: {}", err.error());
-            };
-            auto handshake = BittorrentHandshake(torrent->meta_info().info_hash(), torrent->local_peer_id());
-            TRY(socket->write_until_depleted({ &handshake, sizeof(handshake) }));
+        auto address = Core::SocketAddress { context->peer->address(), context->peer->port() };
+        auto socket_fd = TRY(Core::System::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+        auto sockaddr = address.to_sockaddr_in();
+        auto connect_err = Core::System::connect(socket_fd, bit_cast<struct sockaddr*>(&sockaddr), sizeof(sockaddr));
+        if (connect_err.is_error() && connect_err.error().code() != EINPROGRESS) {
+            dbgln("Error connecting to peer {}: {}", address.to_deprecated_string(), connect_err.error());
+            continue;
         }
+
+        context->socket_writable_notifier = Core::Notifier::construct(socket_fd, Core::Notifier::Type::Write);
+        auto context_ptr = context.leak_ptr();
+        auto socket = Core::TCPSocket::adopt_fd(socket_fd).release_value().leak_ptr();
+        m_socket_contexts.set(socket, context_ptr);
+        m_peer_to_socket_context.set(context_ptr->peer, context_ptr);
+        context_ptr->socket = socket;
+
+        context_ptr->socket_writable_notifier->on_activation = [&, socket_fd, context_ptr, socket, address] {
+//            dbgln("WRITE notification {}", address.to_deprecated_string());
+            int so_error;
+            socklen_t len = sizeof(so_error);
+            auto ret = getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+            if (ret == -1) {
+                auto errn = errno;
+                dbgln("error calling getsockopt: errno:{} {}", errn, strerror(errn));
+                return;
+            }
+            //dbgln("getsockopt SO_ERROR resut: '{}' ({}) for peer {}", strerror(so_error), so_error, address.to_deprecated_string());
+
+            if (so_error == ECONNREFUSED) {
+                dbgln("Connection refused {}", context_ptr->peer);
+            } else if (so_error == ETIMEDOUT) {
+                dbgln("Connection timed out {}", context_ptr->peer);
+            } else if (so_error == ESUCCESS) {
+                dbgln("Connection succeeded {}, sending handshake", context_ptr->peer);
+                auto handshake = BittorrentHandshake(context_ptr->torrent->meta_info().info_hash(), context_ptr->torrent->local_peer_id());
+                socket->write_until_depleted({ &handshake, sizeof(handshake) }).release_value_but_fixme_should_propagate_errors();
+                socket->on_ready_to_read = [&, context_ptr] {
+                    auto err = read_from_socket(context_ptr);
+                    if (err.is_error()) {
+                        dbgln("Error reading from socket: {} for peer {}", err.error(), address.to_deprecated_string());
+                        return;
+                    }
+                };
+            }
+            context_ptr->socket_writable_notifier->close();
+        };
     }
     return {};
 }
@@ -409,13 +441,13 @@ ErrorOr<void> Data::handle_piece_downloaded(Bits::PieceDownloadedCommand const& 
 
         torrent->local_bitfield().set(index, true);
         auto& havers = torrent->missing_pieces().get(index).value()->havers;
-        dbgln("Havers of that piece we just downloaded: {}", havers.size());
+        dbgln("Havers of that piece {} we just downloaded: {}", index, havers.size());
         for (auto& haver_ : havers) {
             auto& haver = haver_.key;
             VERIFY(haver->interesting_pieces().remove(index));
-            dbgln("Removed piece {} from interesting pieces of {}", index, haver->address().to_string());
+            dbgln("Removed piece {} from interesting pieces of {}", index, haver);
             if (haver->interesting_pieces().is_empty()) {
-                dbgln("Peer {} has no more interesting pieces, sending a NotInterested message", haver->address().to_string());
+                dbgln("Peer {} has no more interesting pieces, sending a NotInterested message", haver);
                 auto* socket = m_peer_to_socket_context.get(haver).value()->socket;
                 TRY(socket->write_value(BigEndian<u32>(1)));
                 TRY(socket->write_value((u8)MessageType::NotInterested));

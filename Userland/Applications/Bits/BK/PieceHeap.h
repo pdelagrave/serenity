@@ -6,76 +6,71 @@
 
 #pragma once
 
+#include "Applications/Bits/Peer.h"
+#include <AK/HashMap.h>
+#include <AK/Optional.h>
+#include <AK/RefCounted.h>
 #include <AK/Types.h>
+#include <AK/NonnullRefPtr.h>
 
 namespace Bits {
+
+class Peer;
+
+struct PieceStatus : public RefCounted<PieceStatus> {
+    PieceStatus(u64 index_in_torrent)
+        : index_in_torrent(index_in_torrent)
+    {
+    }
+    Optional<size_t> index_in_heap = {};
+    u64 index_in_torrent;
+    size_t key() const { return havers.size(); }
+    HashMap<NonnullRefPtr<Peer>, nullptr_t> havers;
+    bool currently_downloading { false };
+};
+
 namespace BK {
 
-// Simpler for now to just copy AK::BinaryHeap instead of inheriting it.
-template<typename K, typename V, size_t Capacity>
+// Based on AK::BinaryHeap
+// Poor man's version of an intrusive binary heap/priority queue
 class PieceHeap {
+    using Value = NonnullRefPtr<PieceStatus>;
 public:
     PieceHeap() = default;
     ~PieceHeap() = default;
 
-    // This constructor allows for O(n) construction of the heap (instead of O(nlogn) for repeated insertions)
-    PieceHeap(K keys[], V values[], size_t size)
-    {
-        VERIFY(size <= Capacity);
-        m_size = size;
-        for (size_t i = 0; i < size; i++) {
-            m_elements[i].key = keys[i];
-            m_elements[i].value = values[i];
-        }
-
-        for (ssize_t i = size / 2; i >= 0; i--) {
-            heapify_down(i);
-        }
-    }
-
     [[nodiscard]] size_t size() const { return m_size; }
     [[nodiscard]] bool is_empty() const { return m_size == 0; }
 
-    V at(size_t index)
+    void insert(Value value)
     {
-        VERIFY(index < m_size);
-        return m_elements[index].value;
-    }
-
-    K at_key(size_t index)
-    {
-        VERIFY(index < m_size);
-        return m_elements[index].key;
-    }
-
-    size_t insert(K key, V value)
-    {
-        VERIFY(m_size < Capacity);
+        VERIFY(m_size < m_capacity);
         auto index = m_size++;
-        m_elements[index].key = key;
-        m_elements[index].value = value;
-        return heapify_up(index);
+        m_elements.empend(value);
+        value->index_in_heap = index;
+        heapify_up(index);
     }
 
-    V pop_min()
+    Value pop_min()
     {
         VERIFY(!is_empty());
         auto index = --m_size;
         swap(m_elements[0], m_elements[index]);
         heapify_down(0);
-        return m_elements[index].value;
+        m_elements[index]->index_in_heap.clear();
+        return m_elements[index];
     }
 
-    [[nodiscard]] V const& peek_min() const
+    [[nodiscard]] Value peek_min() const
     {
         VERIFY(!is_empty());
-        return m_elements[0].value;
+        return m_elements[0];
     }
 
-    [[nodiscard]] K const& peek_min_key() const
+    [[nodiscard]] size_t peek_min_key() const
     {
         VERIFY(!is_empty());
-        return m_elements[0].key;
+        return m_elements[0]->key();
     }
 
     void clear()
@@ -83,54 +78,57 @@ public:
         m_size = 0;
     }
 
-    size_t update_key(size_t index, u32 new_key_value)
+    void update(Value value)
     {
-        VERIFY(index < m_size);
+        auto index = value->index_in_heap.value();
         auto& element = m_elements[index];
-        auto old_key_value = element.key;
-        element.key = new_key_value;
-        if (new_key_value < old_key_value)
-            return heapify_up(index);
+        VERIFY(value == element);
+
+        auto parent = (index - 1) / 2;
+        if (index > 0 && value->key() < m_elements[parent]->key())
+            heapify_up(index);
         else
-            return heapify_down(index);
+            heapify_down(index);
     }
 
 private:
-    size_t heapify_down(size_t index)
+    static constexpr u64 m_capacity = 100000;
+
+    void swap(Value& a, Value& b) {
+        AK::swap(a, b);
+        AK::swap(a->index_in_heap, b->index_in_heap);
+    }
+
+    void heapify_down(size_t index)
     {
         while (index * 2 + 1 < m_size) {
             auto left_child = index * 2 + 1;
             auto right_child = index * 2 + 2;
 
             auto min_child = left_child;
-            if (right_child < m_size && m_elements[right_child].key < m_elements[min_child].key)
+            if (right_child < m_size && m_elements[right_child]->key() < m_elements[min_child]->key())
                 min_child = right_child;
 
-            if (m_elements[index].key <= m_elements[min_child].key)
+            if (m_elements[index]->key() <= m_elements[min_child]->key())
                 break;
             swap(m_elements[index], m_elements[min_child]);
             index = min_child;
         }
-        return index;
     }
 
-    size_t heapify_up(size_t index)
+    void heapify_up(size_t index)
     {
         while (index != 0) {
             auto parent = (index - 1) / 2;
 
-            if (m_elements[index].key >= m_elements[parent].key)
+            if (m_elements[index]->key() >= m_elements[parent]->key())
                 break;
             swap(m_elements[index], m_elements[parent]);
             index = parent;
         }
-        return index;
     }
 
-    struct {
-        K key;
-        V value;
-    } m_elements[Capacity];
+    Vector<Value, m_capacity> m_elements;
     size_t m_size { 0 };
 };
 

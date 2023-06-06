@@ -26,19 +26,8 @@ enum class TorrentState {
 };
 ErrorOr<String> state_to_string(TorrentState state);
 
-struct PieceAvailability : public RefCounted<PieceAvailability> {
-    PieceAvailability(u64 index_in_torrent)
-        : index_in_torrent(index_in_torrent)
-    {
-    }
-    Optional<size_t> index_in_heap = {};
-    u64 index_in_torrent;
-    HashMap<NonnullRefPtr<Peer>, nullptr_t> havers;
-};
-
 class Torrent : public RefCounted<Torrent> {
-    using MissingPieceHeap = BK::PieceHeap<u32, RefPtr<PieceAvailability>, 1000>;
-    using MissingPieceMap = AK::HashMap<u64, RefPtr<PieceAvailability>>;
+    using MissingPieceMap = AK::HashMap<u64, RefPtr<PieceStatus>>;
 public:
     Torrent(NonnullOwnPtr<MetaInfo>, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>>);
     ~Torrent();
@@ -59,7 +48,7 @@ public:
     void checking_in_background(bool skip, bool assume_valid, Function<void()> on_complete);
     void cancel_checking();
 
-    MissingPieceHeap& piece_heap() { return m_piece_heap; }
+    BK::PieceHeap& piece_heap() { return m_piece_heap; }
     MissingPieceMap& missing_pieces() { return m_missing_pieces; }
 
     u64 piece_length(u64 piece_index) const;
@@ -79,7 +68,7 @@ private:
     TorrentState m_state;
     Vector<NonnullRefPtr<Peer>> m_peers;
 
-    MissingPieceHeap m_piece_heap;
+    BK::PieceHeap m_piece_heap;
     MissingPieceMap m_missing_pieces;
 };
 

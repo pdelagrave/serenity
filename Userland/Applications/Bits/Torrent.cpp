@@ -58,7 +58,7 @@ void Torrent::checking_in_background(bool skip, bool assume_valid, Function<void
                 bool is_present = skip ? assume_valid : TRY(data_file_map()->check_piece(i, i == piece_count() - 1));
                 local_bitfield().set(i, is_present);
                 if (!is_present)
-                    m_missing_pieces.set(i, make_ref_counted<PieceAvailability>(i));
+                    m_missing_pieces.set(i, make_ref_counted<PieceStatus>(i));
             }
 
             return 0;

@@ -76,6 +76,8 @@ private:
         Core::TCPSocket* socket;
         NonnullRefPtr<Peer> peer;
         NonnullRefPtr<Torrent> torrent;
+        RefPtr<Core::Notifier> socket_writable_notifier {};
+        bool sent_handshake = false;
         bool got_handshake = false;
         u32 incoming_message_length = sizeof(BittorrentHandshake);
         ByteBuffer incoming_message_buffer {};
@@ -87,7 +89,7 @@ private:
     HashMap<NonnullRefPtr<Peer>, SocketContext*> m_peer_to_socket_context;
     ErrorOr<void> read_handshake(Stream& bytes, SocketContext* context);
     ErrorOr<void> add_new_connections();
-    ErrorOr<void> read_from_socket(Core::TCPSocket*);
+    ErrorOr<void> read_from_socket(SocketContext* context);
     ErrorOr<void> send_local_bitfield(Core::TCPSocket*, SocketContext*);
     ErrorOr<bool> update_piece_availability(u64 piece_index, SocketContext* context);
     ErrorOr<void> receive_bitfield(ReadonlyBytes const&, SocketContext*);

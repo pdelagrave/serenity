@@ -11,17 +11,18 @@
 #include "Torrent.h"
 #include <AK/IPv4Address.h>
 #include <AK/Types.h>
+#include <AK/HashMap.h>
 
 namespace Bits {
-
-struct PieceAvailability;
+class PieceHeap;
+struct PieceStatus;
 
 class Peer : public RefCounted<Peer> {
 public:
     Peer(IPv4Address address, u16 port);
     Optional<ReadonlyBytes> id() { return m_id->bytes(); }
-    IPv4Address const& address() { return m_address; }
-    u16 port() { return m_port; }
+    IPv4Address const& address() const { return m_address; }
+    u16 port() const { return m_port; }
 
     BitField& bitfield() { return m_bitfield; }
     void set_bitbield(BitField const& bitfield) { m_bitfield = bitfield; }
@@ -61,3 +62,12 @@ private:
 };
 
 }
+
+template<>
+struct AK::Formatter<Bits::Peer> : AK::Formatter<StringView> {
+    ErrorOr<void> format(FormatBuilder& builder, Bits::Peer const& value)
+    {
+        return Formatter<StringView>::format(builder, DeprecatedString::formatted("{}:{}", value.address(), value.port()));
+    }
+};
+

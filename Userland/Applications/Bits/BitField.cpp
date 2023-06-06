@@ -14,12 +14,13 @@ BitField::BitField(u64 size)
     m_data.zero_fill();
 }
 
-BitField::BitField(ByteBuffer data)
-    : m_size(data.size() * 8)
+BitField::BitField(ByteBuffer data, u64 size)
+    : m_size(size)
 {
     VERIFY(m_size > 0);
+    VERIFY(data.size() > 0);
+    VERIFY(data.size() == AK::ceil_div(size, 8L));
     m_data = move(data);
-    VERIFY(m_data.size() > 0);
     for (u64 i = 0; i < m_size; i++) {
         if (get(i))
             m_ones++;
