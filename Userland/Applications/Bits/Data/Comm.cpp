@@ -8,8 +8,7 @@
 #include "BitTorrentMessage.h"
 #include "Command.h"
 #include "PeerContext.h"
-#include "Userland/Libraries/LibCore/Socket.h"
-#include "Userland/Libraries/LibCore/System.h"
+#include <LibCore/System.h>
 
 namespace Bits::Data {
 
@@ -140,7 +139,7 @@ ErrorOr<void> Comm::piece_or_peer_availability_updated(NonnullRefPtr<PeerContext
                 auto sub_context = m_peer_to_context.get(peer).value();
                 dbglncc(context, *sub_context, "Requesting piece {} from peer {}", next_piece_index, peer);
 
-                m_active_peers.set(peer, nullptr);
+                m_active_peers.set(peer);
                 u32 block_length = min(BlockLength, torrent->piece_length(next_piece_index));
                 TRY(send_message(TRY(BitTorrent::Message::request(next_piece_index, 0, block_length)), *sub_context, context));
 
@@ -166,7 +165,7 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> context)
     // TODO: cleanup this mess, read everything we can in a buffer at every call first.
     auto& peer = context->peer;
     auto& socket = context->socket;
-    //dbglnc(context, "Reading from socket");
+    // dbglnc(context, "Reading from socket");
 
     // hack:
     if (TRY(socket->pending_bytes()) == 0) {
@@ -198,11 +197,11 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> context)
         }
 
         auto pending_bytes = TRY(socket->pending_bytes());
-//        dbglnc(context, "Socket has {} pending bytes", pending_bytes);
-//        dbglnc(context, "Incoming message length is {}", context->incoming_message_length);
-//        dbglnc(context, "Incoming message buffer size is {}", context->incoming_message_buffer.size());
+        //        dbglnc(context, "Socket has {} pending bytes", pending_bytes);
+        //        dbglnc(context, "Incoming message length is {}", context->incoming_message_length);
+        //        dbglnc(context, "Incoming message buffer size is {}", context->incoming_message_buffer.size());
         auto will_read = min(pending_bytes, context->incoming_message_length - context->incoming_message_buffer.size());
-//        dbglnc(context, "Will read {} bytes", will_read);
+        //        dbglnc(context, "Will read {} bytes", will_read);
         TRY(socket->read_until_filled(TRY(context->incoming_message_buffer.get_bytes_for_writing(will_read))));
 
         if (context->incoming_message_buffer.size() == context->incoming_message_length) {
@@ -449,7 +448,8 @@ ErrorOr<void> Comm::handle_piece_downloaded(PieceDownloadedCommand const& comman
     return {};
 }
 
-ErrorOr<void> Comm::send_message(ByteBuffer const& message, NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context) {
+ErrorOr<void> Comm::send_message(ByteBuffer const& message, NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context)
+{
     size_t size_to_send = message.size() + sizeof(u32); // message size + message payload
     if (context->output_message_buffer.empty_space() < size_to_send) {
         dbglncc(parent_context, context, "{} Outgoing message buffer is full, dropping message", context->peer);

@@ -35,8 +35,7 @@ private:
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
 
-    // TODO: Use a HashSet or the like instead
-    HashMap<NonnullRefPtr<Peer>, nullptr_t> m_active_peers;
+    HashTable<NonnullRefPtr<Peer>> m_active_peers;
 
     Queue<NonnullRefPtr<PeerContext>> m_sockets_to_create;
     Threading::Mutex m_sockets_to_create_mutex;
