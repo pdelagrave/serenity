@@ -14,9 +14,29 @@
 #include <AK/TypeCasts.h>
 #include <initializer_list>
 
-namespace Bits {
-namespace BitTorrent {
-namespace Message {
+namespace Bits::BitTorrent::Message {
+
+struct Handshake {
+    u8 pstrlen;
+    u8 pstr[19];
+    u8 reserved[8];
+    u8 info_hash[20];
+    u8 peer_id[20];
+
+public:
+    Handshake(ReadonlyBytes info_hash, ReadonlyBytes peer_id)
+        : pstrlen(19)
+    {
+        VERIFY(info_hash.size() == 20);
+        VERIFY(peer_id.size() == 20);
+        memcpy(pstr, "BitTorrent protocol", 19);
+        memset(reserved, 0, 8);
+        memcpy(this->info_hash, info_hash.data(), 20);
+        memcpy(this->peer_id, peer_id.data(), 20);
+    }
+    Handshake() = default;
+    static ErrorOr<Handshake> read_from_stream(Stream&);
+};
 
 enum class Type : u8 {
     Choke = 0x00,
@@ -53,6 +73,4 @@ ErrorOr<ByteBuffer> not_interested();
 ErrorOr<ByteBuffer> request(BigEndian<u32> piece_index, BigEndian<u32> piece_offset, BigEndian<u32> block_length);
 ErrorOr<ByteBuffer> unchoke();
 
-}
-}
 }

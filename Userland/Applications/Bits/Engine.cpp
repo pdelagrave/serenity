@@ -150,7 +150,7 @@ void Engine::start_torrent(int torrent_id)
                     int peers_to_add = min(max_peers, torrent->peers().size());
                     dbgln("Total peers {}, adding {}:", torrent->peers().size(), peers_to_add);
                     for (int i = 0; i < peers_to_add; i++) {
-                        data.add_connection(torrent->peers()[i], move(torrent));
+                        comm.add_connection(torrent->peers()[i], move(torrent)).release_value_but_fixme_should_propagate_errors();
                     }
                 }).release_value_but_fixme_should_propagate_errors();
             });

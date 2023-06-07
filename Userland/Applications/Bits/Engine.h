@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "Data.h"
 #include "Torrent.h"
+#include "Data/Comm.h"
 #include <LibCore/Object.h>
 #include <LibProtocol/RequestClient.h>
 namespace Bits {
@@ -40,7 +40,7 @@ private:
     Vector<NonnullRefPtr<Torrent>> m_torrents;
     ErrorOr<void> announce(Torrent&, Function<void()> on_complete);
 
-    Data data;
+    Data::Comm comm;
     bool m_skip_checking;
     bool m_assume_valid;
 };

@@ -6,9 +6,14 @@
 
 #include "BitTorrentMessage.h"
 
-namespace Bits {
-namespace BitTorrent {
-namespace Message {
+namespace Bits::BitTorrent::Message {
+
+ErrorOr<Handshake> Handshake::read_from_stream(Stream& stream)
+{
+    Handshake handshake;
+    TRY(stream.read_until_filled(Bytes { &handshake, sizeof(Handshake) }));
+    return handshake;
+}
 
 ErrorOr<DeprecatedString> to_string(Type type)
 {
@@ -40,7 +45,6 @@ template<typename... Payload>
 static ErrorOr<ByteBuffer> serialize(Type message_type, Payload... payloads)
 {
     // TODO make this more efficient?
-    dbgln("serialize: message_type: {}", to_string(message_type).release_value());
 
     auto stream = AllocatingMemoryStream();
 
@@ -83,6 +87,4 @@ ErrorOr<ByteBuffer> unchoke()
     return serialize(Type::Unchoke, StreamWritable({}));
 }
 
-}
-}
 }
