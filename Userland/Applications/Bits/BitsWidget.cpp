@@ -8,12 +8,10 @@
 #include "Engine.h"
 #include "MetaInfo.h"
 #include "Torrent.h"
-#include <Applications/Bits/BitsWindowGML.h>
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Menu.h>
-#include <LibGUI/MessageBox.h>
 #include <LibGUI/SortingProxyModel.h>
 
 namespace Bits {
@@ -32,7 +30,6 @@ ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::
 BitsWidget::BitsWidget(NonnullRefPtr<Engine> engine)
     : m_engine(move(engine))
 {
-    load_from_gml(get_bits_window_gml).release_value_but_fixme_should_propagate_errors();
     set_layout<GUI::VerticalBoxLayout>();
 
     auto start_torrent_action = GUI::Action::create("Start",
@@ -57,7 +54,7 @@ BitsWidget::BitsWidget(NonnullRefPtr<Engine> engine)
         });
 
     m_torrent_model = TorrentModel::create([this] { return m_engine->torrents(); });
-    m_torrents_table_view = *find_descendant_of_type_named<GUI::TableView>("torrent_table");
+    m_torrents_table_view = add<GUI::TableView>();
     m_torrents_table_view->set_model(m_torrent_model);
     m_torrents_table_view->set_selection_mode(GUI::AbstractView::SelectionMode::MultiSelection);
     m_torrents_table_view->on_context_menu_request = [this, start_torrent_action, stop_torrent_action, cancel_checking_torrent_action](const GUI::ModelIndex& model_index, const GUI::ContextMenuEvent& event) {

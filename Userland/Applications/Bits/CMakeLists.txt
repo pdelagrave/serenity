@@ -4,8 +4,6 @@ serenity_component(
     TARGETS Bits
 )
 
-compile_gml(BitsWindow.gml BitsWindowGML.h get_bits_window_gml)
-
 set(SOURCES
     BitsWidget.cpp
     main.cpp
@@ -22,10 +20,6 @@ set(SOURCES
         Data/BitTorrentMessage.cpp
         Data/PeerContext.cpp
         )
-
-set(GENERATED_SOURCES
-    BitsWindowGML.h
-)
 
 serenity_app(Bits ICON hard-disk)
 target_link_libraries(Bits PRIVATE LibCore LibGfx LibGUI LibDesktop LibFileSystemAccessClient LibMain LibCrypto LibThreading LibProtocol LibHTTP)
