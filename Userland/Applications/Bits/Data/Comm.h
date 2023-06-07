@@ -48,16 +48,27 @@ private:
     ErrorOr<bool> update_piece_availability(u64 piece_index, NonnullRefPtr<PeerContext> context);
     ErrorOr<void> receive_bitfield(ReadonlyBytes const&, NonnullRefPtr<PeerContext>);
     ErrorOr<void> insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_index);
-    ErrorOr<void> handle_piece_downloaded(Bits::PieceDownloadedCommand const& command);
+    ErrorOr<void> handle_piece_downloaded(PieceDownloadedCommand const& command);
     ErrorOr<void> handle_have(NonnullRefPtr<PeerContext> context, Stream& stream);
-    ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<Torrent>& torrent);
-    ErrorOr<void> send_message(ByteBuffer const&, NonnullRefPtr<PeerContext>);
-    ErrorOr<void> flush_output_buffer(NonnullRefPtr<PeerContext> context);
+    ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<PeerContext> context);
+    ErrorOr<void> send_message(ByteBuffer const&, NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context = {});
+    ErrorOr<void> flush_output_buffer(NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context = {});
 
     // dbgln with Context
     template<typename... Parameters>
     void dbglnc(NonnullRefPtr<PeerContext> context, CheckedFormatString<Parameters...>&& fmtstr, Parameters const&... parameters)
     {
+        dbgln("[{:21}] {}", context->peer, String::formatted(move(fmtstr), parameters...).value());
+    }
+
+    // dbgln with a sub context... TODO: Better use a stack of contexts in global variable?
+    template<typename... Parameters>
+    void dbglncc(RefPtr<PeerContext> parent_context, NonnullRefPtr<PeerContext> sub_context, CheckedFormatString<Parameters...>&& fmtstr, Parameters const&... parameters)
+    {
+        if (parent_context.is_null())
+            dbglnc(sub_context, move(fmtstr), parameters...);
+        else
+            dbgln("[{:21}][{:21}] {}", parent_context->peer, sub_context->peer, String::formatted(move(fmtstr), parameters...).value());
     }
 };
 

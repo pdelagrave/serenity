@@ -6,9 +6,10 @@
 
 #pragma once
 
-#include "Applications/Bits/Torrent.h"
+#include "../Torrent.h"
+#include "PeerContext.h"
 #include <LibCore/Event.h>
-namespace Bits {
+namespace Bits::Data {
 
 class Command : public Core::Event {
 public:
@@ -27,23 +28,23 @@ protected:
 
 class PieceDownloadedCommand : public Command {
 public:
-    explicit PieceDownloadedCommand(u64 index, ReadonlyBytes data, NonnullRefPtr<Torrent> torrent)
+    explicit PieceDownloadedCommand(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerContext> context)
         : Command(Command::Type::PieceDownloaded)
         , m_index(index)
         , m_data(ByteBuffer::copy(data).release_value())
-        , m_torrent(move(torrent))
+        , m_context(move(context))
 
     {
     }
 
     u64 index() const { return m_index; }
     ReadonlyBytes data() const { return m_data.bytes(); }
-    NonnullRefPtr<Torrent> const& torrent() const { return m_torrent; }
+    NonnullRefPtr<PeerContext> const& context() const { return m_context; }
 
 private:
     u64 m_index;
     ByteBuffer m_data;
-    NonnullRefPtr<Torrent> m_torrent;
+    NonnullRefPtr<PeerContext> m_context;
 };
 
 }
