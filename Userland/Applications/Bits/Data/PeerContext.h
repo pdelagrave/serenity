@@ -32,7 +32,7 @@ struct PeerContext : public RefCounted<PeerContext> {
     bool sent_handshake = false;
     bool got_handshake = false;
 
-    u32 incoming_message_length = sizeof(BitTorrent::Message::Handshake);
+    u32 incoming_message_length = sizeof(BitTorrent::Handshake);
     ByteBuffer incoming_message_buffer {};
 
     static ErrorOr<NonnullRefPtr<PeerContext>> try_create(NonnullRefPtr<Peer> peer, NonnullRefPtr<Torrent> torrent, size_t output_buffer_size);

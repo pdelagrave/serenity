@@ -8,6 +8,7 @@
 
 #include <AK/ByteBuffer.h>
 #include <AK/NonnullOwnPtr.h>
+#include <AK/Stream.h>
 #include <AK/Types.h>
 
 namespace Bits {
@@ -25,6 +26,8 @@ public:
     u64 data_size() const { return m_data.size(); }
 
     ReadonlyBytes bytes() const { return m_data.bytes(); }
+    ErrorOr<void> write_to_stream(Stream& stream) const;
+    static ErrorOr<BitField> read_from_stream(Stream& stream);
 
 private:
     u64 m_size;

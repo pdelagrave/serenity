@@ -40,13 +40,14 @@ private:
     ErrorOr<void> handle_command_piece_downloaded(PieceDownloadedCommand const& command);
 
     // Comm BT message handlers
-    ErrorOr<void> handle_handshake(Stream& bytes, NonnullRefPtr<PeerContext> context);
-    ErrorOr<void> handle_bitfield(ReadonlyBytes const&, NonnullRefPtr<PeerContext>);
-    ErrorOr<void> handle_have(NonnullRefPtr<PeerContext> context, Stream& stream);
+    ErrorOr<void> handle_bitfield(NonnullOwnPtr<BitTorrent::BitField>, NonnullRefPtr<PeerContext>);
+    ErrorOr<void> handle_handshake(NonnullOwnPtr<BitTorrent::Handshake> handshake, NonnullRefPtr<PeerContext> context);
+    ErrorOr<void> handle_have(NonnullOwnPtr<BitTorrent::Have> have_message, NonnullRefPtr<PeerContext> context);
+    ErrorOr<void> handle_piece(NonnullOwnPtr<BitTorrent::Piece>, NonnullRefPtr<PeerContext> context);
 
     // Comm BT low level network functions
     ErrorOr<void> read_from_socket(NonnullRefPtr<PeerContext> context);
-    ErrorOr<void> send_message(ByteBuffer const&, NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context = {});
+    ErrorOr<void> send_message(NonnullOwnPtr<BitTorrent::Message> message, NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context = {});
     ErrorOr<void> flush_output_buffer(NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context = {});
 
     // BT higher level logic

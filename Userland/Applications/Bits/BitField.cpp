@@ -48,4 +48,18 @@ void BitField::set(u64 index, bool value)
     }
 }
 
+ErrorOr<void> BitField::write_to_stream(Stream& stream) const
+{
+    TRY(stream.write_until_depleted(m_data.bytes()));
+    return {};
+}
+
+ErrorOr<BitField> BitField::read_from_stream(Stream& stream) {
+    // This works only when the bitfield is the last thing to be read from the stream
+    // (which is the case for the BT bitfield message type)
+    auto data = TRY(stream.read_until_eof());
+    // this assumes the bitfield size is a multiple of 8 but the last bits could be padding
+    return BitField(data, data.size() * 8);
+}
+
 }

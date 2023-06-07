@@ -101,7 +101,7 @@ ErrorOr<void> Comm::handle_command_add_peer(AddPeerCommand const& command)
             dbglnc(context, "Connection succeeded {}, sending handshake", context->peer);
             context->connected = true;
             context->socket_writable_notifier->set_enabled(false);
-            auto handshake = BitTorrent::Message::Handshake(context->torrent->meta_info().info_hash(), context->torrent->local_peer_id());
+            auto handshake = BitTorrent::Handshake(context->torrent->meta_info().info_hash(), context->torrent->local_peer_id());
             context->socket->write_until_depleted({ &handshake, sizeof(handshake) }).release_value_but_fixme_should_propagate_errors();
             context->socket->on_ready_to_read = [&, context] {
                 auto err = read_from_socket(context);
@@ -136,7 +136,7 @@ ErrorOr<void> Comm::handle_command_piece_downloaded(PieceDownloadedCommand const
             dbglnc(context, "Removed piece {} from interesting pieces of {}", index, haver);
             if (haver->interesting_pieces().is_empty()) {
                 dbglnc(context, "Peer {} has no more interesting pieces, sending a NotInterested message", haver);
-                TRY(send_message(TRY(BitTorrent::Message::not_interested()), *m_peer_to_context.get(haver).value()));
+                TRY(send_message(make<BitTorrent::NotInterested>(), *m_peer_to_context.get(haver).value()));
                 haver->set_interested_in_peer(false);
             }
         }
@@ -146,7 +146,7 @@ ErrorOr<void> Comm::handle_command_piece_downloaded(PieceDownloadedCommand const
 
         for (auto sub_context : m_torrent_to_context) {
             if (torrent == sub_context.value->torrent) // TODO: create a hashmap for contexts per torrent
-                TRY(send_message(TRY(BitTorrent::Message::have(index)), sub_context.value));
+                TRY(send_message(make<BitTorrent::Have>(index), sub_context.value));
         }
     } else {
         TRY(insert_piece_in_heap(torrent, index));
@@ -156,40 +156,15 @@ ErrorOr<void> Comm::handle_command_piece_downloaded(PieceDownloadedCommand const
     return {};
 }
 
-ErrorOr<void> Comm::handle_handshake(Stream& bytes, NonnullRefPtr<PeerContext> context)
+ErrorOr<void> Comm::handle_bitfield(NonnullOwnPtr<BitTorrent::BitField> bitfield, NonnullRefPtr<PeerContext> context)
 {
-    auto handshake = TRY(bytes.read_value<BitTorrent::Message::Handshake>());
-    dbglnc(context, "Received handshake_message: Protocol: {}, Reserved: {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b}, info_hash: {:20hex-dump}, peer_id: {:20hex-dump}",
-        handshake.pstr,
-        handshake.reserved[0],
-        handshake.reserved[1],
-        handshake.reserved[2],
-        handshake.reserved[3],
-        handshake.reserved[4],
-        handshake.reserved[5],
-        handshake.reserved[6],
-        handshake.reserved[7],
-        handshake.info_hash,
-        handshake.peer_id);
+    //    auto bitfield_data_size = context->torrent->local_bitfield().data_size();
+    //    if (bytes.size() != bitfield_data_size) {
+    //        warnln("Bitfield sent by peer has a size ({}) different than expected({})", bytes.size(), bitfield_data_size);
+    //        return Error::from_string_literal("Bitfield sent by peer has a size different than expected");
+    //    }
 
-    if (context->torrent->meta_info().info_hash() != Bytes { handshake.info_hash, 20 }) {
-        dbglnc(context, "Peer sent a handshake with the wrong info hash.");
-        return Error::from_string_literal("Peer sent a handshake with the wrong info hash.");
-    }
-    context->got_handshake = true;
-    context->incoming_message_length = 0;
-
-    return {};
-}
-
-ErrorOr<void> Comm::handle_bitfield(ReadonlyBytes const& bytes, NonnullRefPtr<PeerContext> context)
-{
-    auto bitfield_data_size = context->torrent->local_bitfield().data_size();
-    if (bytes.size() != bitfield_data_size) {
-        warnln("Bitfield sent by peer has a size ({}) different than expected({})", bytes.size(), bitfield_data_size);
-        return Error::from_string_literal("Bitfield sent by peer has a size different than expected");
-    }
-    context->peer->set_bitbield(BitField(TRY(ByteBuffer::copy(bytes)), context->torrent->piece_count()));
+    context->peer->set_bitbield(bitfield->bitfield);
     dbglnc(context, "Set bitfield for peer. size: {} data_size: {}", context->peer->bitfield().size(), context->peer->bitfield().data_size());
 
     for (auto& missing_piece : context->torrent->missing_pieces()) {
@@ -199,12 +174,77 @@ ErrorOr<void> Comm::handle_bitfield(ReadonlyBytes const& bytes, NonnullRefPtr<Pe
     return {};
 }
 
-ErrorOr<void> Comm::handle_have(NonnullRefPtr<PeerContext> context, AK::Stream& stream)
+ErrorOr<void> Comm::handle_handshake(NonnullOwnPtr<BitTorrent::Handshake> handshake, NonnullRefPtr<PeerContext> context)
 {
-    auto piece_index = TRY(stream.read_value<BigEndian<u32>>());
+    dbglnc(context, "Received handshake_message: Protocol: {}, Reserved: {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b}, info_hash: {:20hex-dump}, peer_id: {:20hex-dump}",
+        handshake->pstr,
+        handshake->reserved[0],
+        handshake->reserved[1],
+        handshake->reserved[2],
+        handshake->reserved[3],
+        handshake->reserved[4],
+        handshake->reserved[5],
+        handshake->reserved[6],
+        handshake->reserved[7],
+        handshake->info_hash,
+        handshake->peer_id);
+
+    if (context->torrent->meta_info().info_hash() != Bytes { handshake->info_hash, 20 }) {
+        dbglnc(context, "Peer sent a handshake with the wrong info hash.");
+        return Error::from_string_literal("Peer sent a handshake with the wrong info hash.");
+    }
+    context->got_handshake = true;
+    context->incoming_message_length = 0;
+
+    return {};
+}
+
+ErrorOr<void> Comm::handle_have(NonnullOwnPtr<BitTorrent::Have> have_message, NonnullRefPtr<PeerContext> context)
+{
+    auto piece_index = have_message->piece_index;
     dbglnc(context, "Peer {} has piece {}, setting in peer bitfield, bitfield size: {}", context->peer->address().to_deprecated_string(), piece_index, context->peer->bitfield().size());
     context->peer->bitfield().set(piece_index, true);
     TRY(update_piece_availability(piece_index, context));
+    return {};
+}
+
+ErrorOr<void> Comm::handle_piece(NonnullOwnPtr<BitTorrent::Piece> piece_message, NonnullRefPtr<PeerContext> context) {
+    auto block_size = piece_message->block.size();
+    auto index = piece_message->piece_index;
+    auto begin = piece_message->begin_offset;
+    auto peer = context->peer;
+
+    auto& piece = peer->incoming_piece();
+    if (piece.index.has_value()) {
+        VERIFY(index == piece.index);
+        VERIFY(begin == piece.offset);
+    } else {
+        VERIFY(begin == 0);
+        piece.index = index;
+        piece.offset = 0;
+        piece.length = context->torrent->piece_length(index);
+        piece.data.resize(piece.length);
+    }
+
+    piece.data.overwrite(begin, piece_message->block.bytes().data(), block_size);
+    piece.offset = begin + block_size;
+    if (piece.offset == (size_t)piece.length) {
+        TRY(post_command(make<PieceDownloadedCommand>(index, piece.data.bytes(), context)));
+        piece.index = {};
+        m_active_peers.remove(peer);
+    } else {
+        if (peer->is_choking_us()) {
+            dbglnc(context, "Weren't done downloading the blocks for this piece {}, but peer is choking us, so we're giving up on it", index);
+            piece.index = {};
+            m_active_peers.remove(peer);
+            TRY(insert_piece_in_heap(context->torrent, index));
+            TRY(piece_or_peer_availability_updated(context));
+        } else {
+            auto next_block_length = min((size_t)BlockLength, (size_t)piece.length - piece.offset);
+            // dbglnc(context, "Sending next request for piece {} at offset {}/{} blocklen: {}", index, piece.offset, piece.length, next_block_length);
+            TRY(send_message(make<BitTorrent::Request>(index, piece.offset, next_block_length), context));
+        }
+    }
     return {};
 }
 
@@ -256,14 +296,16 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> context)
             auto message_stream = FixedMemoryStream(context->incoming_message_buffer.bytes());
             if (!context->got_handshake) {
                 dbglnc(context, "No handshake yet, trying to read and parse it");
-                TRY(handle_handshake(message_stream, context));
-                TRY(send_message(TRY(BitTorrent::Message::bitfield(context->torrent->local_bitfield().bytes())), context));
+                TRY(handle_handshake(TRY(BitTorrent::Handshake::try_create(message_stream)), context));
+                TRY(send_message(make<BitTorrent::BitField>(context->torrent->local_bitfield()), context));
             } else {
                 using MessageType = Bits::BitTorrent::Message::Type;
-                auto message_id = TRY(message_stream.read_value<MessageType>());
-                dbglnc(context, "Got message type {}", TRY(to_string(message_id)));
+                auto message_type = TRY(message_stream.read_value<MessageType>());
+                dbglnc(context, "Got message type {}", TRY(Bits::BitTorrent::Message::to_string(message_type)));
+                TRY(message_stream.seek(0, AK::SeekMode::SetPosition));
                 context->incoming_message_length = 0;
-                switch (message_id) {
+
+                switch (message_type) {
                 case MessageType::Choke:
                     peer->set_peer_is_choking_us(true);
                     TRY(piece_or_peer_availability_updated(context));
@@ -279,58 +321,24 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> context)
                     peer->set_peer_is_interested_in_us(false);
                     break;
                 case MessageType::Have:
-                    TRY(handle_have(context, message_stream));
+                    TRY(handle_have(make<BitTorrent::Have>(message_stream), context));
                     break;
                 case MessageType::Bitfield: {
-                    TRY(handle_bitfield(message_stream.bytes().slice(1), context));
+                    TRY(handle_bitfield(make<BitTorrent::BitField>(message_stream), context));
                     break;
                 }
                 case MessageType::Request:
                     dbglnc(context, "ERROR: Message type Request is unsupported");
                     break;
                 case MessageType::Piece: {
-                    auto block_size = TRY(message_stream.size()) - 9;
-                    auto index = TRY(message_stream.read_value<BigEndian<u32>>());
-                    auto begin = TRY(message_stream.read_value<BigEndian<u32>>());
-
-                    auto& piece = peer->incoming_piece();
-                    if (piece.index.has_value()) {
-                        VERIFY(index == piece.index);
-                        VERIFY(begin == piece.offset);
-                    } else {
-                        VERIFY(begin == 0);
-                        piece.index = index;
-                        piece.offset = 0;
-                        piece.length = context->torrent->piece_length(index);
-                        piece.data.resize(piece.length);
-                    }
-
-                    piece.data.overwrite(begin, message_stream.bytes().slice(9, block_size).data(), block_size);
-                    piece.offset = begin + block_size;
-                    if (piece.offset == (size_t)piece.length) {
-                        TRY(post_command(make<PieceDownloadedCommand>(index, piece.data.bytes(), context)));
-                        piece.index = {};
-                        m_active_peers.remove(peer);
-                    } else {
-                        if (peer->is_choking_us()) {
-                            dbglnc(context, "Weren't done downloading the blocks for this piece {}, but peer is choking us, so we're giving up on it", index);
-                            piece.index = {};
-                            m_active_peers.remove(peer);
-                            TRY(insert_piece_in_heap(context->torrent, index));
-                            TRY(piece_or_peer_availability_updated(context));
-                        } else {
-                            auto next_block_length = min((size_t)BlockLength, (size_t)piece.length - piece.offset);
-                            // dbglnc(context, "Sending next request for piece {} at offset {}/{} blocklen: {}", index, piece.offset, piece.length, next_block_length);
-                            TRY(send_message(TRY(BitTorrent::Message::request(index, piece.offset, next_block_length)), context));
-                        }
-                    }
+                    TRY(handle_piece(make<BitTorrent::Piece>(message_stream), context));
                     break;
                 }
                 case MessageType::Cancel:
                     dbglnc(context, "ERROR: message type Cancel is unsupported");
                     break;
                 default:
-                    dbglnc(context, "ERROR: Got unsupported message type: {:02X}: {}", (u8)message_id, TRY(to_string(message_id)));
+                    dbglnc(context, "ERROR: Got unsupported message type: {:02X}: {}", (u8)message_type, TRY(BitTorrent::BitField::to_string(message_type)));
                     break;
                 }
             }
@@ -339,16 +347,18 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> context)
     return {};
 }
 
-ErrorOr<void> Comm::send_message(ByteBuffer const& message, NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context)
+ErrorOr<void> Comm::send_message(NonnullOwnPtr<BitTorrent::Message> message , NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context)
 {
-    size_t size_to_send = message.size() + sizeof(u32); // message size + message payload
+    dbglncc(parent_context, context, "Sending {}", *message);
+    size_t size_to_send = message->size() + sizeof(u32); // message size + message payload
     if (context->output_message_buffer.empty_space() < size_to_send) {
-        dbglncc(parent_context, context, "{} Outgoing message buffer is full, dropping message", context->peer);
+        //TODO: keep a non-serialized message queue?
+        dbglncc(parent_context, context, "Outgoing message buffer is full, dropping message");
         return {};
     }
-    BigEndian<u32> const& endian = BigEndian<u32>(message.size());
-    context->output_message_buffer.write({ &endian, sizeof(u32) });
-    context->output_message_buffer.write(message);
+    auto size = BigEndian<u32>(message->size());
+    context->output_message_buffer.write({ &size, sizeof(u32) });
+    context->output_message_buffer.write(message->serialized);
     return flush_output_buffer(context, parent_context);
 }
 
@@ -365,10 +375,10 @@ ErrorOr<void> Comm::flush_output_buffer(NonnullRefPtr<PeerContext> context, RefP
             }
             return {};
         }
-        dbglncc(parent_context, context, "Wrote {} bytes to socket", err.value());
+//        dbglncc(parent_context, context, "Wrote {} bytes to socket", err.value());
 
         if (context->output_message_buffer.used_space() == 0) {
-            dbglncc(parent_context, context, "Output message buffer is empty, we sent everything, disabling ready to write notifier");
+//            dbglncc(parent_context, context, "Output message buffer is empty, we sent everything, disabling ready to write notifier");
             context->socket_writable_notifier->set_enabled(false);
             return {};
         }
@@ -400,7 +410,7 @@ ErrorOr<void> Comm::piece_or_peer_availability_updated(NonnullRefPtr<PeerContext
 
                 m_active_peers.set(peer);
                 u32 block_length = min(BlockLength, torrent->piece_length(next_piece_index));
-                TRY(send_message(TRY(BitTorrent::Message::request(next_piece_index, 0, block_length)), *sub_context, context));
+                TRY(send_message(make<BitTorrent::Request>(next_piece_index, 0, block_length), *sub_context, context));
 
                 found_peer = true;
                 break;
@@ -446,11 +456,10 @@ ErrorOr<bool> Comm::update_piece_availability(u64 piece_index, NonnullRefPtr<Pee
         peer->set_interested_in_peer(true);
 
         // TODO: figure out when is the best time to unchoke the peer.
-        TRY(send_message(TRY(BitTorrent::Message::unchoke()), context));
+        TRY(send_message(make<BitTorrent::Unchoke>(), context));
         peer->set_choking_peer(false);
 
-        // TODO make static const buffers for these messages
-        TRY(send_message(TRY(BitTorrent::Message::interested()), context));
+        TRY(send_message(make<BitTorrent::Interested>(), context));
         peer->set_interested_in_peer(true);
 
         TRY(piece_or_peer_availability_updated(context));
