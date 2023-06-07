@@ -13,18 +13,6 @@
 
 namespace Bits {
 
-enum class MessageType : u8 {
-    Choke = 0x00,
-    Unchoke = 0x01,
-    Interested = 0x02,
-    NotInterested = 0x03,
-    Have = 0x04,
-    Bitfield = 0x05,
-    Request = 0x06,
-    Piece = 0x07,
-    Cancel = 0x08,
-};
-
 struct BittorrentHandshake {
     u8 pstrlen;
     u8 pstr[19];
@@ -76,11 +64,13 @@ private:
         Core::TCPSocket* socket;
         NonnullRefPtr<Peer> peer;
         NonnullRefPtr<Torrent> torrent;
+        CircularBuffer outgoing_message_buffer;
         RefPtr<Core::Notifier> socket_writable_notifier {};
         bool sent_handshake = false;
         bool got_handshake = false;
         u32 incoming_message_length = sizeof(BittorrentHandshake);
         ByteBuffer incoming_message_buffer {};
+        bool connected = false;
     };
 
     Queue<NonnullOwnPtr<SocketContext>> m_sockets_to_create;
@@ -97,6 +87,8 @@ private:
     ErrorOr<void> handle_piece_downloaded(Bits::PieceDownloadedCommand const& command);
     ErrorOr<void> handle_have(SocketContext* context, Stream& stream);
     ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<Torrent>& torrent);
+    ErrorOr<void> send_message(ByteBuffer const&, SocketContext*);
+    ErrorOr<void> flush_output_buffer(SocketContext* context);
 };
 
 }

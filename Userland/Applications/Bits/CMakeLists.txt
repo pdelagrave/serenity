@@ -19,6 +19,7 @@ set(SOURCES
         TorrentDataFileMap.cpp
         BitField.cpp
         Data.cpp
+        Data/BitTorrentMessage.cpp
         )
 
 set(GENERATED_SOURCES

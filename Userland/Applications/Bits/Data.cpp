@@ -6,6 +6,7 @@
 
 #include "Data.h"
 #include "Applications/Bits/Data/Command.h"
+#include "Data/BitTorrentMessage.h"
 #include "sys/select.h"
 #include <LibCore/Socket.h>
 #include <LibCore/System.h>
@@ -70,19 +71,10 @@ void Data::add_connection(NonnullRefPtr<Peer> peer, NonnullRefPtr<Torrent> torre
     dbgln("Trying to connect with peer {}", peer);
     Threading::MutexLocker lock(m_sockets_to_create_mutex);
     lock.lock();
-    m_sockets_to_create.enqueue(make<SocketContext>(nullptr, peer, torrent));
+    size_t output_buffer_size = 1 * MiB;
+    m_sockets_to_create.enqueue(make<SocketContext>(nullptr, peer, torrent, CircularBuffer::create_empty(output_buffer_size).release_value_but_fixme_should_propagate_errors()));
     lock.unlock();
     m_event_loop->post_event(*this, make<Core::CustomEvent>(DataEventType::AddConnection));
-}
-
-ErrorOr<void> Data::send_local_bitfield(Core::TCPSocket* socket, Bits::Data::SocketContext* context)
-{
-    dbgln("Sending bitfield_message");
-    auto local_bitfield = context->torrent->local_bitfield();
-    TRY(socket->write_value(BigEndian<u32>(local_bitfield.data_size() + 1)));
-    TRY(socket->write_value((u8)MessageType::Bitfield));
-    TRY(socket->write_until_depleted(local_bitfield.bytes()));
-    return {};
 }
 
 ErrorOr<bool> Data::update_piece_availability(u64 piece_index, SocketContext* socket_context)
@@ -111,16 +103,12 @@ ErrorOr<bool> Data::update_piece_availability(u64 piece_index, SocketContext* so
     if (!peer->is_interested_in_peer()) {
         peer->set_interested_in_peer(true);
 
-        auto socket = socket_context->socket;
-
         // TODO: figure out when is the best time to unchoke the peer.
-        TRY(socket->write_value(BigEndian<u32>(1)));
-        TRY(socket->write_value((u8)MessageType::Unchoke));
+        TRY(send_message(TRY(BitTorrent::Message::unchoke()), socket_context));
         peer->set_choking_peer(false);
 
         // TODO make static const buffers for these messages
-        TRY(socket->write_value(BigEndian<u32>(1)));
-        TRY(socket->write_value((u8)MessageType::Interested));
+        TRY(send_message(TRY(BitTorrent::Message::interested()), socket_context));
         peer->set_interested_in_peer(true);
 
         TRY(piece_or_peer_availability_updated(torrent));
@@ -166,12 +154,11 @@ ErrorOr<void> Data::piece_or_peer_availability_updated(NonnullRefPtr<Torrent>& t
             if (!peer->is_choking_us() && !m_active_peers.contains(peer)) {
                 dbgln("Requesting piece {} from peer {}", next_piece_index, peer);
                 m_active_peers.set(peer, nullptr);
-                auto socket = m_peer_to_socket_context.get(peer).value()->socket;
-                TRY(socket->write_value(BigEndian<u32>(13)));
-                TRY(socket->write_value((u8)MessageType::Request));
-                TRY(socket->write_value(BigEndian<u32>(next_piece_index)));
-                TRY(socket->write_value(BigEndian<u32>(0)));
-                TRY(socket->write_value(BigEndian<u32>(min(BlockLength, torrent->piece_length(next_piece_index)))));
+
+                u32 block_length = min(BlockLength, torrent->piece_length(next_piece_index));
+                auto context = m_peer_to_socket_context.get(peer).value();
+                TRY(send_message(TRY(BitTorrent::Message::request(next_piece_index, 0, block_length)), context));
+
                 found_peer = true;
                 break;
             }
@@ -194,14 +181,16 @@ ErrorOr<void> Data::read_from_socket(SocketContext* context)
     // TODO: cleanup this mess, read everything we can in a buffer at every call first.
     auto& peer = context->peer;
     auto& socket = context->socket;
-    //dbgln("Reading from socket with peer {}:{}.", peer->address().to_string(), peer->port());
+    dbgln("{} Reading from socket", peer);
 
     // hack:
     if (TRY(socket->pending_bytes()) == 0) {
         dbgln("Socket {}:{} has no pending bytes, reading and writing to it to force receiving an RST", peer->address().to_deprecated_string(), peer->port());
         // remote host probably closed the connection, reading from the socket to force receiving an RST and having the connection being fully closed on our side.
-        TRY(socket->read_some(ByteBuffer::create_uninitialized(1).release_value().bytes()));
-        TRY(socket->write_value(BigEndian<u32>(0)));
+//        TRY(socket->read_some(ByteBuffer::create_uninitialized(1).release_value().bytes()));
+//        TRY(socket->write_value(BigEndian<u32>(0)));
+        context->socket_writable_notifier->close();
+        socket->close();
         return {};
     }
     if (TRY(socket->can_read_without_blocking())) {
@@ -236,8 +225,9 @@ ErrorOr<void> Data::read_from_socket(SocketContext* context)
             if (!context->got_handshake) {
                 dbgln("No handshake yet, trying to read and parse it");
                 TRY(read_handshake(message_stream, context));
-                TRY(send_local_bitfield(socket, context));
+                TRY(send_message(TRY(BitTorrent::Message::bitfield(context->torrent->local_bitfield().bytes())), context));
             } else {
+                using MessageType = Bits::BitTorrent::Message::Type;
                 auto message_id = TRY(message_stream.read_value<MessageType>());
                 context->incoming_message_length = 0;
                 switch (message_id) {
@@ -272,7 +262,7 @@ ErrorOr<void> Data::read_from_socket(SocketContext* context)
                     dbgln("Got message type Request, unsupported");
                     break;
                 case MessageType::Piece: {
-                    //dbgln("Got message type Piece");
+                    dbgln("{} Got message type Piece", peer);
                     auto block_size = TRY(message_stream.size()) - 9;
                     auto index = TRY(message_stream.read_value<BigEndian<u32>>());
                     auto begin = TRY(message_stream.read_value<BigEndian<u32>>());
@@ -304,12 +294,8 @@ ErrorOr<void> Data::read_from_socket(SocketContext* context)
                             TRY(piece_or_peer_availability_updated(context->torrent));
                         } else {
                             auto next_block_length = min((size_t)BlockLength, (size_t)piece.length - piece.offset);
-                            //dbgln("Sending next request for piece {} at offset {}/{} blocklen: {}", index, piece.offset, piece.length, next_block_length);
-                            TRY(socket->write_value(BigEndian<u32>(13)));
-                            TRY(socket->write_value((u8)MessageType::Request));
-                            TRY(socket->write_value(BigEndian<u32>(index)));
-                            TRY(socket->write_value(BigEndian<u32>(piece.offset)));
-                            TRY(socket->write_value(BigEndian<u32>(next_block_length)));
+                            // dbgln("Sending next request for piece {} at offset {}/{} blocklen: {}", index, piece.offset, piece.length, next_block_length);
+                            TRY(send_message(TRY(BitTorrent::Message::request(index, piece.offset, next_block_length)), context));
                         }
                     }
                     break;
@@ -382,7 +368,14 @@ ErrorOr<void> Data::add_new_connections()
         context_ptr->socket = socket;
 
         context_ptr->socket_writable_notifier->on_activation = [&, socket_fd, context_ptr, socket, address] {
-//            dbgln("WRITE notification {}", address.to_deprecated_string());
+            if (context_ptr->connected) {
+                VERIFY(context_ptr->outgoing_message_buffer.used_space() > 0);
+                auto err = flush_output_buffer(context_ptr);
+                if (err.is_error()) {
+                    dbgln("{} error flushing output buffer: {}", context_ptr->peer, err.error());
+                }
+                return;
+            }
             int so_error;
             socklen_t len = sizeof(so_error);
             auto ret = getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
@@ -391,25 +384,33 @@ ErrorOr<void> Data::add_new_connections()
                 dbgln("error calling getsockopt: errno:{} {}", errn, strerror(errn));
                 return;
             }
-            //dbgln("getsockopt SO_ERROR resut: '{}' ({}) for peer {}", strerror(so_error), so_error, address.to_deprecated_string());
+            // dbgln("getsockopt SO_ERROR resut: '{}' ({}) for peer {}", strerror(so_error), so_error, address.to_deprecated_string());
 
             if (so_error == ECONNREFUSED) {
                 dbgln("Connection refused {}", context_ptr->peer);
+                context_ptr->socket_writable_notifier->close();
+                socket->close();
             } else if (so_error == ETIMEDOUT) {
                 dbgln("Connection timed out {}", context_ptr->peer);
+                context_ptr->socket_writable_notifier->close();
+                socket->close();
             } else if (so_error == ESUCCESS) {
                 dbgln("Connection succeeded {}, sending handshake", context_ptr->peer);
+                context_ptr->connected = true;
+                context_ptr->socket_writable_notifier->set_enabled(false);
                 auto handshake = BittorrentHandshake(context_ptr->torrent->meta_info().info_hash(), context_ptr->torrent->local_peer_id());
                 socket->write_until_depleted({ &handshake, sizeof(handshake) }).release_value_but_fixme_should_propagate_errors();
                 socket->on_ready_to_read = [&, context_ptr] {
                     auto err = read_from_socket(context_ptr);
                     if (err.is_error()) {
-                        dbgln("Error reading from socket: {} for peer {}", err.error(), address.to_deprecated_string());
+                        dbgln("Error reading from socket: {} for peer {}", err.error(), context_ptr->peer);
                         return;
                     }
                 };
+            } else {
+                dbgln("Unhandled error: '{}' ({}) for peer {}", strerror(so_error), so_error, context_ptr->peer);
+                socket->close();
             }
-            context_ptr->socket_writable_notifier->close();
         };
     }
     return {};
@@ -448,9 +449,7 @@ ErrorOr<void> Data::handle_piece_downloaded(Bits::PieceDownloadedCommand const& 
             dbgln("Removed piece {} from interesting pieces of {}", index, haver);
             if (haver->interesting_pieces().is_empty()) {
                 dbgln("Peer {} has no more interesting pieces, sending a NotInterested message", haver);
-                auto* socket = m_peer_to_socket_context.get(haver).value()->socket;
-                TRY(socket->write_value(BigEndian<u32>(1)));
-                TRY(socket->write_value((u8)MessageType::NotInterested));
+                TRY(send_message(TRY(BitTorrent::Message::not_interested()), m_peer_to_socket_context.get(haver).value()));
                 haver->set_interested_in_peer(false);
             }
         }
@@ -459,11 +458,8 @@ ErrorOr<void> Data::handle_piece_downloaded(Bits::PieceDownloadedCommand const& 
         dbgln("We completed piece {}", index);
 
         for (auto context : m_socket_contexts) {
-            if (torrent != context.value->torrent) // TODO: create a hashmap for contexts per torrent
-                continue;
-            TRY(context.value->socket->write_value(BigEndian<u32>(5)));
-            TRY(context.value->socket->write_value((u8)MessageType::Have));
-            TRY(context.value->socket->write_value(BigEndian<u32>(index)));
+            if (torrent == context.value->torrent) // TODO: create a hashmap for contexts per torrent
+                TRY(send_message(TRY(BitTorrent::Message::have(index)), context.value));
         }
     } else {
         TRY(insert_piece_in_heap(torrent, index));
@@ -471,6 +467,42 @@ ErrorOr<void> Data::handle_piece_downloaded(Bits::PieceDownloadedCommand const& 
     }
     TRY(piece_or_peer_availability_updated(torrent));
     return {};
+}
+
+ErrorOr<void> Data::send_message(const AK::ByteBuffer& message, Bits::Data::SocketContext* context)
+{
+    size_t size_to_send = message.size() + sizeof(u32); // message size + message payload
+    if (context->outgoing_message_buffer.empty_space() < size_to_send) {
+        dbgln("{} Outgoing message buffer is full, dropping message", context->peer);
+        return {};
+    }
+    BigEndian<u32> const& endian = BigEndian<u32>(message.size());
+    context->outgoing_message_buffer.write({ &endian, sizeof(u32) });
+    context->outgoing_message_buffer.write(message);
+    return flush_output_buffer(context);
+}
+
+ErrorOr<void> Data::flush_output_buffer(SocketContext* context)
+{
+    for (;;) {
+        auto err = context->outgoing_message_buffer.flush_to_stream(*context->socket);
+        if (err.is_error()) {
+            if (err.error().code() == EAGAIN || err.error().code() == EWOULDBLOCK || err.error().code() == EINTR) {
+                dbgln("{} Socket is not ready to write, enabling read to write notifier", context->peer);
+                context->socket_writable_notifier->set_enabled(true);
+            } else {
+                dbgln("{} Error writing to socket: err: {}  code: {}  codestr: {}", context->peer, err.error(), err.error().code(), strerror(err.error().code()));
+            }
+            return {};
+        }
+        dbgln("{} Wrote {} bytes to socket", context->peer, err.value());
+
+        if (context->outgoing_message_buffer.used_space() == 0) {
+            dbgln("{} outgoing message buffer is empty, we sent everything, disabling ready to write notifier", context->peer);
+            context->socket_writable_notifier->set_enabled(false);
+            return {};
+        }
+    }
 }
 
 }
