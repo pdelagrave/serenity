@@ -14,17 +14,12 @@
 
 namespace Bits::Data {
 
-enum DataEventType {
-    AddConnection,
-};
-
 class Comm : public Core::Object {
     C_OBJECT(Comm);
 
 public:
     Comm();
     ErrorOr<void> add_connection(NonnullRefPtr<Peer>, NonnullRefPtr<Torrent> torrent);
-    virtual void event(Core::Event& event) override;
     u16 max_active_peers = 10;
 
 protected:
@@ -36,22 +31,28 @@ private:
     RefPtr<Threading::Thread> m_thread;
 
     HashTable<NonnullRefPtr<Peer>> m_active_peers;
-
-    Queue<NonnullRefPtr<PeerContext>> m_sockets_to_create;
-    Threading::Mutex m_sockets_to_create_mutex;
     HashMap<NonnullRefPtr<Peer>, NonnullRefPtr<PeerContext>> m_peer_to_context;
     HashMap<NonnullRefPtr<Torrent>, NonnullRefPtr<PeerContext>> m_torrent_to_context;
+
+    // Bits Engine/Comm internal commands
+    ErrorOr<void> post_command(NonnullOwnPtr<Command> command);
+    ErrorOr<void> handle_command_add_peer(AddPeerCommand const& command);
+    ErrorOr<void> handle_command_piece_downloaded(PieceDownloadedCommand const& command);
+
+    // Comm BT message handlers
     ErrorOr<void> read_handshake(Stream& bytes, NonnullRefPtr<PeerContext> context);
-    ErrorOr<void> add_new_connections();
-    ErrorOr<void> read_from_socket(NonnullRefPtr<PeerContext> context);
-    ErrorOr<bool> update_piece_availability(u64 piece_index, NonnullRefPtr<PeerContext> context);
     ErrorOr<void> receive_bitfield(ReadonlyBytes const&, NonnullRefPtr<PeerContext>);
-    ErrorOr<void> insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_index);
-    ErrorOr<void> handle_piece_downloaded(PieceDownloadedCommand const& command);
     ErrorOr<void> handle_have(NonnullRefPtr<PeerContext> context, Stream& stream);
-    ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<PeerContext> context);
+
+    // Comm BT low level network functions
+    ErrorOr<void> read_from_socket(NonnullRefPtr<PeerContext> context);
     ErrorOr<void> send_message(ByteBuffer const&, NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context = {});
     ErrorOr<void> flush_output_buffer(NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context = {});
+
+    // BT higher level logic
+    ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<PeerContext> context);
+    ErrorOr<bool> update_piece_availability(u64 piece_index, NonnullRefPtr<PeerContext> context);
+    ErrorOr<void> insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_index);
 
     // dbgln with Context
     template<typename... Parameters>

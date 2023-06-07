@@ -50,13 +50,12 @@ ErrorOr<void> Comm::read_handshake(Stream& stream, NonnullRefPtr<PeerContext> co
 
 ErrorOr<void> Comm::add_connection(NonnullRefPtr<Peer> peer, NonnullRefPtr<Torrent> torrent)
 {
-    Threading::MutexLocker lock(m_sockets_to_create_mutex);
-    auto context = TRY(PeerContext::try_create(peer, torrent, 1 * MiB));
-    dbglnc(context, "Creating context");
-    lock.lock();
-    m_sockets_to_create.enqueue(context);
-    lock.unlock();
-    m_event_loop->post_event(*this, make<Core::CustomEvent>(DataEventType::AddConnection));
+    return TRY(post_command(make<AddPeerCommand>(torrent, peer)));
+}
+
+ErrorOr<void> Comm::post_command(NonnullOwnPtr<Command> command)
+{
+    m_event_loop->post_event(*this, move(command));
     return {};
 }
 
@@ -260,7 +259,7 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> context)
                     piece.data.overwrite(begin, message_stream.bytes().slice(9, block_size).data(), block_size);
                     piece.offset = begin + block_size;
                     if (piece.offset == (size_t)piece.length) {
-                        Core::EventLoop::current().post_event(*this, make<PieceDownloadedCommand>(index, piece.data.bytes(), context));
+                        TRY(post_command(make<PieceDownloadedCommand>(index, piece.data.bytes(), context)));
                         piece.index = {};
                         m_active_peers.remove(peer);
                     } else {
@@ -310,96 +309,12 @@ ErrorOr<void> Comm::handle_have(NonnullRefPtr<PeerContext> context, AK::Stream& 
 
 void Comm::custom_event(Core::CustomEvent& event)
 {
-    switch (event.custom_type()) {
-    case DataEventType::AddConnection:
-        auto err = add_new_connections();
-        if (err.is_error())
-            dbgln("Error adding new connections: {}", err.error());
-        break;
-    }
-}
-
-ErrorOr<void> Comm::add_new_connections()
-{
-    Vector<NonnullRefPtr<PeerContext>> to_add;
-    Threading::MutexLocker lock(m_sockets_to_create_mutex);
-    lock.lock();
-    while (!m_sockets_to_create.is_empty())
-        to_add.append(m_sockets_to_create.dequeue());
-    lock.unlock();
-
-    for (auto& context : to_add) {
-        auto address = Core::SocketAddress { context->peer->address(), context->peer->port() };
-        auto socket_fd = TRY(Core::System::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
-        auto sockaddr = address.to_sockaddr_in();
-        auto connect_err = Core::System::connect(socket_fd, bit_cast<struct sockaddr*>(&sockaddr), sizeof(sockaddr));
-        if (connect_err.is_error() && connect_err.error().code() != EINPROGRESS) {
-            dbglnc(context, "Error connecting to peer {}: {}", address.to_deprecated_string(), connect_err.error());
-            continue;
-        }
-
-        context->socket_writable_notifier = Core::Notifier::construct(socket_fd, Core::Notifier::Type::Write);
-
-        auto socket = TRY(Core::TCPSocket::adopt_fd(socket_fd));
-        context->socket = move(socket);
-
-        m_peer_to_context.set(context->peer, context);
-
-        context->socket_writable_notifier->on_activation = [&, socket_fd, context, address] {
-            if (context->connected) {
-                VERIFY(context->output_message_buffer.used_space() > 0);
-                auto err = flush_output_buffer(context);
-                if (err.is_error()) {
-                    dbglnc(context, "{} error flushing output buffer: {}", context->peer, err.error());
-                }
-                return;
-            }
-            int so_error;
-            socklen_t len = sizeof(so_error);
-            auto ret = getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
-            if (ret == -1) {
-                auto errn = errno;
-                dbglnc(context, "error calling getsockopt: errno:{} {}", errn, strerror(errn));
-                return;
-            }
-            // dbglnc(context, "getsockopt SO_ERROR resut: '{}' ({}) for peer {}", strerror(so_error), so_error, address.to_deprecated_string());
-
-            if (so_error == ECONNREFUSED) {
-                dbglnc(context, "Connection refused {}", context->peer);
-                context->socket_writable_notifier->close();
-                context->socket->close();
-            } else if (so_error == ETIMEDOUT) {
-                dbglnc(context, "Connection timed out {}", context->peer);
-                context->socket_writable_notifier->close();
-                context->socket->close();
-            } else if (so_error == ESUCCESS) {
-                dbglnc(context, "Connection succeeded {}, sending handshake", context->peer);
-                context->connected = true;
-                context->socket_writable_notifier->set_enabled(false);
-                auto handshake = BitTorrent::Message::Handshake(context->torrent->meta_info().info_hash(), context->torrent->local_peer_id());
-                context->socket->write_until_depleted({ &handshake, sizeof(handshake) }).release_value_but_fixme_should_propagate_errors();
-                context->socket->on_ready_to_read = [&, context] {
-                    auto err = read_from_socket(context);
-                    if (err.is_error()) {
-                        dbglnc(context, "Error reading from socket: {} for peer {}", err.error(), context->peer);
-                        return;
-                    }
-                };
-            } else {
-                dbglnc(context, "Unhandled error: '{}' ({}) for peer {}", strerror(so_error), so_error, context->peer);
-                context->socket->close();
-            }
-        };
-    }
-    return {};
-}
-
-void Comm::event(Core::Event& event)
-{
     auto err = [&]() -> ErrorOr<void> {
-        switch (static_cast<Command::Type>(event.type())) {
+        switch (static_cast<Command::Type>(event.custom_type())) {
+        case Command::Type::AddPeer:
+            return handle_command_add_peer(static_cast<AddPeerCommand const&>(event));
         case Command::Type::PieceDownloaded:
-            return handle_piece_downloaded(static_cast<PieceDownloadedCommand const&>(event));
+            return handle_command_piece_downloaded(static_cast<PieceDownloadedCommand const&>(event));
         default:
             Object::event(event);
             break;
@@ -410,7 +325,74 @@ void Comm::event(Core::Event& event)
         dbgln("Error handling event: {}", err.error());
 }
 
-ErrorOr<void> Comm::handle_piece_downloaded(PieceDownloadedCommand const& command)
+ErrorOr<void> Comm::handle_command_add_peer(AddPeerCommand const& command)
+{
+    auto context = TRY(PeerContext::try_create(command.peer, command.torrent, 1 * MiB));
+    auto address = Core::SocketAddress { context->peer->address(), context->peer->port() };
+    auto socket_fd = TRY(Core::System::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+    auto sockaddr = address.to_sockaddr_in();
+    auto connect_err = Core::System::connect(socket_fd, bit_cast<struct sockaddr*>(&sockaddr), sizeof(sockaddr));
+    if (connect_err.is_error() && connect_err.error().code() != EINPROGRESS) {
+        dbglnc(context, "Error connecting to peer {}: {}", address.to_deprecated_string(), connect_err.error());
+        return {};
+    }
+
+    context->socket_writable_notifier = Core::Notifier::construct(socket_fd, Core::Notifier::Type::Write);
+
+    auto socket = TRY(Core::TCPSocket::adopt_fd(socket_fd));
+    context->socket = move(socket);
+
+    m_peer_to_context.set(context->peer, context);
+
+    context->socket_writable_notifier->on_activation = [&, socket_fd, context, address] {
+        if (context->connected) {
+            VERIFY(context->output_message_buffer.used_space() > 0);
+            auto err = flush_output_buffer(context);
+            if (err.is_error()) {
+                dbglnc(context, "{} error flushing output buffer: {}", context->peer, err.error());
+            }
+            return;
+        }
+        int so_error;
+        socklen_t len = sizeof(so_error);
+        auto ret = getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+        if (ret == -1) {
+            auto errn = errno;
+            dbglnc(context, "error calling getsockopt: errno:{} {}", errn, strerror(errn));
+            return;
+        }
+        // dbglnc(context, "getsockopt SO_ERROR resut: '{}' ({}) for peer {}", strerror(so_error), so_error, address.to_deprecated_string());
+
+        if (so_error == ECONNREFUSED) {
+            dbglnc(context, "Connection refused {}", context->peer);
+            context->socket_writable_notifier->close();
+            context->socket->close();
+        } else if (so_error == ETIMEDOUT) {
+            dbglnc(context, "Connection timed out {}", context->peer);
+            context->socket_writable_notifier->close();
+            context->socket->close();
+        } else if (so_error == ESUCCESS) {
+            dbglnc(context, "Connection succeeded {}, sending handshake", context->peer);
+            context->connected = true;
+            context->socket_writable_notifier->set_enabled(false);
+            auto handshake = BitTorrent::Message::Handshake(context->torrent->meta_info().info_hash(), context->torrent->local_peer_id());
+            context->socket->write_until_depleted({ &handshake, sizeof(handshake) }).release_value_but_fixme_should_propagate_errors();
+            context->socket->on_ready_to_read = [&, context] {
+                auto err = read_from_socket(context);
+                if (err.is_error()) {
+                    dbglnc(context, "Error reading from socket: {} for peer {}", err.error(), context->peer);
+                    return;
+                }
+            };
+        } else {
+            dbglnc(context, "Unhandled error: '{}' ({}) for peer {}", strerror(so_error), so_error, context->peer);
+            context->socket->close();
+        }
+    };
+    return {};
+}
+
+ErrorOr<void> Comm::handle_command_piece_downloaded(PieceDownloadedCommand const& command)
 {
     auto context = command.context();
     auto torrent = context->torrent;

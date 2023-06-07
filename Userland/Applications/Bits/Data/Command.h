@@ -11,19 +11,30 @@
 #include <LibCore/Event.h>
 namespace Bits::Data {
 
-class Command : public Core::Event {
+class Command : public Core::CustomEvent {
 public:
     enum class Type {
-        // GUI to engine commands.
-        PieceDownloaded = 78000,
+        AddPeer,
+        PieceDownloaded
     };
     virtual ~Command() = default;
 
 protected:
     explicit Command(Type type)
-        : Core::Event(to_underlying(type))
+        : Core::CustomEvent(to_underlying(type))
     {
     }
+};
+
+struct AddPeerCommand : public Command {
+    AddPeerCommand(NonnullRefPtr<Torrent> torrent, NonnullRefPtr<Peer> peer)
+        : Command(Command::Type::AddPeer)
+        , torrent(move(torrent))
+        , peer(move(peer))
+    {
+    }
+    NonnullRefPtr<Torrent> torrent;
+    NonnullRefPtr<Peer> peer;
 };
 
 class PieceDownloadedCommand : public Command {
