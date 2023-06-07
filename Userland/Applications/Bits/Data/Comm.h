@@ -40,8 +40,8 @@ private:
     ErrorOr<void> handle_command_piece_downloaded(PieceDownloadedCommand const& command);
 
     // Comm BT message handlers
-    ErrorOr<void> read_handshake(Stream& bytes, NonnullRefPtr<PeerContext> context);
-    ErrorOr<void> receive_bitfield(ReadonlyBytes const&, NonnullRefPtr<PeerContext>);
+    ErrorOr<void> handle_handshake(Stream& bytes, NonnullRefPtr<PeerContext> context);
+    ErrorOr<void> handle_bitfield(ReadonlyBytes const&, NonnullRefPtr<PeerContext>);
     ErrorOr<void> handle_have(NonnullRefPtr<PeerContext> context, Stream& stream);
 
     // Comm BT low level network functions
