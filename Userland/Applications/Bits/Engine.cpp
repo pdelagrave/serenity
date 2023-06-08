@@ -14,22 +14,20 @@ namespace Bits {
 
 void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString data_path)
 {
-    deferred_invoke([this, meta_info = move(meta_info), data_path]() mutable {
-        auto torrent_root_dir = meta_info->root_dir_name();
-        DeprecatedString optional_root_dir = "";
-        if (torrent_root_dir.has_value()) {
-            optional_root_dir = DeprecatedString::formatted("/{}", torrent_root_dir.value());
-        }
+    auto torrent_root_dir = meta_info->root_dir_name();
+    DeprecatedString optional_root_dir = "";
+    if (torrent_root_dir.has_value()) {
+        optional_root_dir = DeprecatedString::formatted("/{}", torrent_root_dir.value());
+    }
 
-        auto local_files = make<Vector<NonnullRefPtr<LocalFile>>>();
-        for (auto f : meta_info->files()) {
-            auto local_path = DeprecatedString::formatted("{}{}/{}", data_path, optional_root_dir, f->path());
-            local_files->append(make_ref_counted<LocalFile>(move(local_path), move(f)));
-        }
+    auto local_files = make<Vector<NonnullRefPtr<LocalFile>>>();
+    for (auto f : meta_info->files()) {
+        auto local_path = DeprecatedString::formatted("{}{}/{}", data_path, optional_root_dir, f->path());
+        local_files->append(make_ref_counted<LocalFile>(move(local_path), move(f)));
+    }
 
-        NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(local_files));
-        m_torrents.append(move(torrent));
-    });
+    NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(local_files));
+    m_torrents.append(move(torrent));
 }
 
 void Engine::timer_event(Core::TimerEvent&)

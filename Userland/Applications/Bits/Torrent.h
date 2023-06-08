@@ -42,8 +42,7 @@ public:
     u16 local_port() const { return m_local_port; }
     DeprecatedString const& display_name() const { return m_display_name; }
     NonnullOwnPtr<TorrentDataFileMap> const& data_file_map() const { return m_data_file_map; }
-    int progress() const { return m_local_bitfield.ones() * 100 / m_piece_count; }
-    int check_progress() const { return m_piece_verified * 100 / m_piece_count; }
+    float check_progress() const { return (float) m_piece_verified * 100 / (float) m_piece_count; }
 
     void checking_in_background(bool skip, bool assume_valid, Function<void()> on_complete);
     void cancel_checking();

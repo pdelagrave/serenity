@@ -21,6 +21,7 @@ public:
     void set(u64 index, bool value);
     u64 ones() const { return m_ones; }
     u64 zeroes() const { return m_size - m_ones; }
+    float progress() const { return (float)m_ones * 100 / (float)m_size; }
 
     u64 size() const { return m_size; }
     u64 data_size() const { return m_data.size(); }

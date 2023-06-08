@@ -20,12 +20,14 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
 
     bool skip_checking = false;
     bool assume_valid_when_skip_checking = false;
+    bool start_cmd_line_torrent = false;
     Vector<StringView> paths;
 
     Core::ArgsParser args_parser;
     args_parser.set_general_help("A BitTorrent client");
     args_parser.add_option(skip_checking, "Skip checking existing files validity when adding a torrent. Data will be assumed to be invalid and pieces will be downloaded.", "skip-checking", 's');
     args_parser.add_option(assume_valid_when_skip_checking, "When skipping checking existing file data when adding a torrent (-s), assume the data to be valid.", "assume-valid", 'V');
+    args_parser.add_option(start_cmd_line_torrent, "Start the torrent specified on the command line.", "start", 'S');
     args_parser.add_positional_argument(paths, "torrent files to add", "files", Core::ArgsParser::Required::No);
     args_parser.parse(arguments);
 
@@ -38,12 +40,13 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
     window->resize(640, 400);
 
     auto engine = TRY(Bits::Engine::try_create(skip_checking, assume_valid_when_skip_checking));
-    auto bits_widget = TRY(window->set_main_widget<Bits::BitsWidget>(engine));
+    auto bits_widget = TRY(Bits::BitsWidget::create(engine));
+    window->set_main_widget(bits_widget);
 
     auto& file_menu = window->add_menu("&File"_string.release_value());
     file_menu.add_action(GUI::CommonActions::make_open_action([&window, &bits_widget](auto&) {
         auto x = FileSystemAccessClient::Client::the().open_file(window, {}, Core::StandardPaths::home_directory(), Core::File::OpenMode::Read);
-        bits_widget->open_file(x.value().filename(), x.value().release_stream()).release_value();
+        bits_widget->open_file(x.value().filename(), x.value().release_stream(), false).release_value();
     }));
 
     file_menu.add_action(GUI::CommonActions::make_quit_action([&](auto&) {
@@ -59,7 +62,7 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
             auto response = FileSystemAccessClient::Client::the().request_file_read_only_approved(window, path);
             if (response.is_error())
                 return 1;
-            TRY(bits_widget->open_file(response.value().filename(), response.value().release_stream()));
+            TRY(bits_widget->open_file(response.value().filename(), response.value().release_stream(), start_cmd_line_torrent));
         }
     }
 
