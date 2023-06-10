@@ -5,8 +5,6 @@
  */
 
 #include "TorrentDataFileMap.h"
-#include "BitField.h"
-#include "LibCrypto/Hash/HashManager.h"
 
 namespace Bits {
 

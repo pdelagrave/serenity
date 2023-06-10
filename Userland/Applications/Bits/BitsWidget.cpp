@@ -65,7 +65,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Engine> engi
     auto& main_splitter = widget->add<GUI::VerticalSplitter>();
     main_splitter.layout()->set_spacing(4);
 
-    widget->m_torrent_model = TorrentModel::create([widget] { return widget->m_engine->torrents(); });
+    widget->m_torrent_model = TorrentModel::create([widget] { return widget->m_engine->get_torrent_contexts(); });
     widget->m_torrents_table_view = main_splitter.add<GUI::TableView>();
     widget->m_torrents_table_view->set_model(widget->m_torrent_model);
     widget->m_torrents_table_view->set_selection_mode(GUI::AbstractView::SelectionMode::MultiSelection);
@@ -89,10 +89,12 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Engine> engi
     widget->m_bottom_tab_widget->set_preferred_height(14);
     widget->m_peer_list_widget = widget->m_bottom_tab_widget->add_tab<PeersTabWidget>("Peers"_string.release_value(), [widget] {
         int selected_index = widget->m_torrents_table_view->selection().first().row();
-        if (selected_index < 0)
-            return Optional<NonnullRefPtr<Torrent>> {};
-        else
-            return Optional<NonnullRefPtr<Torrent>> { widget->m_engine->torrents().at(selected_index) };
+        if (selected_index < 0) {
+            return Optional<NonnullRefPtr<Data::TorrentContext>> {};
+        } else {
+
+            return widget->m_engine->get_torrent_context(widget->m_engine->torrents().at(selected_index)->meta_info().info_hash());
+        }
     });
 
     widget->m_torrents_table_view->on_selection_change = [widget] {

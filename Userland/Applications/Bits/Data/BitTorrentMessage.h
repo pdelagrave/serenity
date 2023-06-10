@@ -91,20 +91,20 @@ private:
     }
 };
 
-class BitField : public Message {
+class BitFieldMessage : public Message {
 public:
-    BitField(Bits::BitField bitfield)
+    BitFieldMessage(BitField bitfield)
         : Message(Type::Bitfield, bitfield)
         , bitfield(bitfield)
     {
     }
 
-    BitField(SeekableStream& stream)
+    BitFieldMessage(SeekableStream& stream)
         : Message(stream)
-        , bitfield(stream.read_value<Bits::BitField>().release_value_but_fixme_should_propagate_errors())
+        , bitfield(stream.read_value<BitField>().release_value_but_fixme_should_propagate_errors())
     {
     }
-    const Bits::BitField bitfield;
+    const BitField bitfield;
 };
 
 class Choke : public Message {

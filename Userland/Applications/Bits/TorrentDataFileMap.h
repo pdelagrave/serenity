@@ -5,7 +5,6 @@
  */
 
 #pragma once
-#include "BitField.h"
 #include "Files.h"
 #include "LibCore/File.h"
 #include "LibCrypto/Hash/HashManager.h"

@@ -5,7 +5,8 @@
  */
 
 #include "PeersTabWidget.h"
-#include "Torrent.h"
+#include "Data/TorrentContext.h"
+#include "Data/PeerContext.h"
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Model.h>
 
@@ -13,7 +14,7 @@ namespace Bits {
 
 class PeerListModel final : public GUI::Model {
 public:
-    explicit PeerListModel(Optional<NonnullRefPtr<Torrent>> torrent)
+    explicit PeerListModel(Optional<NonnullRefPtr<Data::TorrentContext>> torrent)
     {
         set_torrent(torrent);
     }
@@ -76,23 +77,23 @@ public:
             auto& peer = m_peers.at(index.row());
             switch (index.column()) {
             case Column::IP:
-                return peer->address().to_string().release_value_but_fixme_should_propagate_errors();
+                return peer->address.ipv4_address().to_deprecated_string();
             case Column::Port:
-                return peer->port();
+                return peer->address.port();
             case Column::Progress:
-                return DeprecatedString::formatted("{:.1}%", peer->bitfield().progress());
+                return DeprecatedString::formatted("{:.1}%", peer->bitfield.progress());
             case Column::DownloadSpeed:
                 return "1"_string.release_value();
             case Column::UploadSpeed:
                 return "2"_string.release_value();
             case Column::IsChokedByUs:
-                return peer->is_choking_peer();
+                return peer->we_are_choking_peer;
             case Column::IsChokingUs:
-                return peer->is_choking_us();
+                return peer->peer_is_choking_us;
             case Column::IsInterestedByUs:
-                return peer->is_interested_in_us();
+                return peer->peer_is_interested_in_us;
             case Column::IsInterestingToUs:
-                return peer->is_interested_in_peer();
+                return peer->we_are_interested_in_peer;
             }
         }
         return {};
@@ -100,22 +101,22 @@ public:
 
     void update()
     {
-        m_peers = m_torrent.map([](auto torrent) { return torrent->peers(); }).value_or({});
+        m_peers = m_tcontext.map([](auto tcontext) { return tcontext->connected_peers.values(); }).value_or({});
         did_update(UpdateFlag::DontInvalidateIndices);
     }
 
-    void set_torrent(Optional<NonnullRefPtr<Torrent>> torrent)
+    void set_torrent(Optional<NonnullRefPtr<Data::TorrentContext>> tcontext)
     {
-        m_torrent = torrent;
+        m_tcontext = tcontext;
         update();
     }
 
 private:
-    Optional<NonnullRefPtr<Torrent>> m_torrent;
-    Vector<NonnullRefPtr<Peer>> m_peers;
+    Optional<NonnullRefPtr<Data::TorrentContext>> m_tcontext;
+    Vector<NonnullRefPtr<Data::PeerContext>> m_peers;
 };
 
-PeersTabWidget::PeersTabWidget(Function<Optional<NonnullRefPtr<Torrent>>()> get_current_torrent)
+PeersTabWidget::PeersTabWidget(Function<Optional<NonnullRefPtr<Data::TorrentContext>>()> get_current_torrent)
     : m_get_current_torrent(move(get_current_torrent))
 {
     set_layout<GUI::VerticalBoxLayout>();
@@ -135,7 +136,7 @@ void PeersTabWidget::custom_event(Core::CustomEvent& event)
     }
 }
 
-void PeersTabWidget::set_torrent(Optional<NonnullRefPtr<Torrent>> torrent)
+void PeersTabWidget::set_torrent(Optional<NonnullRefPtr<Data::TorrentContext>> torrent)
 {
     static_cast<PeerListModel*>(m_peers_view->model())->set_torrent(torrent);
 }

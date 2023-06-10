@@ -7,7 +7,6 @@
 #pragma once
 
 #include <AK/ByteBuffer.h>
-#include <AK/NonnullOwnPtr.h>
 #include <AK/Stream.h>
 #include <AK/Types.h>
 
@@ -16,6 +15,7 @@ class BitField {
 public:
     BitField(u64 size);
     BitField(ByteBuffer data, u64 size);
+    //BitField(BitField const& other);
 
     bool get(u64 index) const;
     void set(u64 index, bool value);

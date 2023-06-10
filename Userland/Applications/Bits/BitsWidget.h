@@ -13,6 +13,7 @@
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
 
+
 namespace Bits {
 
 class BitsWidget final : public GUI::Widget {

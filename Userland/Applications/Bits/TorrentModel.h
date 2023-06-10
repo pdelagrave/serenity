@@ -6,11 +6,20 @@
 
 #pragma once
 
-#include "Torrent.h"
 #include <LibGUI/Model.h>
 namespace Bits {
 
-using TorrentListCallback = Function<Vector<NonnullRefPtr<Torrent>>()>;
+namespace Data {
+struct PeerContext;
+struct TorrentContext;
+}
+
+namespace BK {
+struct PieceStatus;
+class PieceHeap;
+}
+
+using TorrentListCallback = Function<Vector<NonnullRefPtr<Data::TorrentContext>>()>;
 
 class TorrentModel final : public GUI::Model {
 public:
@@ -30,7 +39,7 @@ private:
         : m_get_updated_torrent_list(move(callback)) {};
 
     TorrentListCallback m_get_updated_torrent_list;
-    Vector<NonnullRefPtr<Torrent>> m_torrents;
+    Vector<NonnullRefPtr<Data::TorrentContext>> m_torrents;
     Vector<String> m_columns = { "Name"_string.release_value(), "Size"_string.release_value(), "State"_string.release_value(), "Progress"_string.release_value(), "Local path"_string.release_value() };
 };
 

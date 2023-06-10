@@ -30,6 +30,10 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
     m_torrents.append(move(torrent));
 }
 
+Optional<NonnullRefPtr<Data::TorrentContext>> Engine::get_torrent_context(ReadonlyBytes info_hash) {
+    return comm.get_torrent_context(info_hash);
+}
+
 void Engine::timer_event(Core::TimerEvent&)
 {
     // state is DOWNLOADING?
@@ -136,20 +140,34 @@ void Engine::start_torrent(int torrent_id)
             f->close();
         }
 
-        torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent = move(torrent), origin_event_loop = &Core::EventLoop::current()] {
+        auto info_hash = torrent->meta_info().info_hash();
+        torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent, info_hash, origin_event_loop = &Core::EventLoop::current()] (BitField local_bitfield) {
             // Checking finished callback, still on the background thread
             torrent->set_state(TorrentState::STARTED);
             // announcing using the UI thread/loop:
-            origin_event_loop->deferred_invoke([this, torrent = move(torrent)] {
-                dbgln("we have {}/{} pieces", torrent->local_bitfield().ones(), torrent->piece_count());
-                announce(torrent, [this, torrent = move(torrent)] {
+            origin_event_loop->deferred_invoke([this, torrent, info_hash, local_bitfield = move(local_bitfield)] {
+                dbgln("we have {}/{} pieces", local_bitfield.ones(), torrent->piece_count());
+
+                // info_hash (RO), can be copied
+                // NonnullRefPtr<BitField>, local_bitfield shared between Comm/TorrentContext and Engine/Torrent. Can only be written to by one of them at a time. Engine write only at full check time, during which Comm is stopped for that torrent. Comm only writes to it when that torrent is active.
+                // local_peer_id (RO), can be copied. Generated when the torrent is added to the engine. Should be different per torrent and per sessions. Only the same for one torrent during the time it exists in the Bits torrent list for one process run.
+                // local_port, ro, can be copied. From Bits config, set in the torrent at creation time.
+                // data_file_map, OwnPtr, shared between Engine and Comm, only one of them has it at a time. Engine has it by default unless Comm is using it.
+
+                auto tcontext = make_ref_counted<Data::TorrentContext>(info_hash,
+                    torrent->local_peer_id(),
+                    (u64)torrent->meta_info().total_length(),
+                    (u64)torrent->meta_info().piece_length(),
+                    torrent->local_port(),
+                    local_bitfield,
+                    torrent->data_file_map());
+                auto c = make<Data::ActivateTorrentCommand>(tcontext);
+                comm.activate_torrent(move(c)).release_value_but_fixme_should_propagate_errors();
+
+                announce(torrent, [this, torrent, info_hash](auto peers) {
                     // announce finished callback, now on the UI loop/thread
-                    int max_peers = 10;
-                    int peers_to_add = min(max_peers, torrent->peers().size());
-                    dbgln("Total peers {}, adding {}:", torrent->peers().size(), peers_to_add);
-                    for (int i = 0; i < peers_to_add; i++) {
-                        comm.add_connection(torrent->peers()[i], move(torrent)).release_value_but_fixme_should_propagate_errors();
-                    }
+                    // TODO: if we seed, we don't add peers.
+                    comm.add_peers({ info_hash, move(peers) }).release_value_but_fixme_should_propagate_errors();
                 }).release_value_but_fixme_should_propagate_errors();
             });
         });
@@ -179,7 +197,8 @@ ErrorOr<String> Engine::url_encode_bytes(u8 const* bytes, size_t length)
     return builder.to_string();
 }
 
-ErrorOr<void> Engine::announce(Torrent& torrent, Function<void()> on_complete)
+// TODO: don't use torrent as a parameter and use exactly what we need instead. We'll also probably soon require to return more than just the peer list.
+ErrorOr<void> Engine::announce(Torrent& torrent, Function<void(Vector<Core::SocketAddress>)> on_complete)
 {
     auto info_hash = TRY(url_encode_bytes(torrent.meta_info().info_hash().data(), 20));
     auto my_peer_id = TRY(url_encode_bytes(torrent.local_peer_id().data(), 20));
@@ -194,37 +213,35 @@ ErrorOr<void> Engine::announce(Torrent& torrent, Function<void()> on_complete)
     auto request = m_protocol_client->start_request("GET", url);
     m_active_requests.set(*request);
 
-    request->on_buffered_request_finish = [this, &torrent, &request = *request, on_complete = move(on_complete)](bool success, auto total_size, auto&, auto status_code, ReadonlyBytes payload) {
+    request->on_buffered_request_finish = [this, &request = *request, on_complete = move(on_complete)](bool success, auto total_size, auto&, auto status_code, ReadonlyBytes payload) {
         auto err = [&]() -> ErrorOr<void> {
-            dbgln("We got back the payload, size: {}, success: {}, status_code: {}, torrent state: {}", total_size, success, status_code, state_to_string(torrent.state()));
+            dbgln("We got back the payload, size: {}, success: {}, status_code: {}", total_size, success, status_code);
             auto response = TRY(BDecoder::parse<Dict>(payload));
 
             if (response.contains("failure reason")) {
                 dbgln("Failure:  {}", response.get_string("failure reason"));
                 return {};
             }
-            //dbgln("interval: {}", response.get<i64>("interval"));
+            // dbgln("interval: {}", response.get<i64>("interval"));
+            Vector<Core::SocketAddress> peers;
             if (response.has<List>("peers")) {
                 for (auto peer : response.get<List>("peers")) {
                     auto peer_dict = peer.get<Dict>();
-                    Optional<IPv4Address> const& ip_address = IPv4Address::from_string(peer_dict.get_string("ip"));
+                    auto ip_address = IPv4Address::from_string(peer_dict.get_string("ip"));
                     // TODO: check if ip string is a host name and resolve it.
                     VERIFY(ip_address.has_value());
-                    auto p = make_ref_counted<Peer>(ip_address.value(), peer_dict.get<i64>("port"));
-                    torrent.peers().append(p);
+                    peers.append({ ip_address.value(), static_cast<u16>(peer_dict.get<i64>("port")) });
                 }
             } else {
-                // https://www.bittorrent.org/beps/bep_0023.html "compact" peers list
+                // https://www.bittorrent.org/beps/bep_0023.html compact peers list
                 auto peers_bytes = response.get<ByteBuffer>("peers");
                 VERIFY(peers_bytes.size() % 6 == 0);
                 auto stream = FixedMemoryStream(peers_bytes.bytes());
-                while (!stream.is_eof()) {
-                    auto p = make_ref_counted<Peer>(TRY(stream.read_value<NetworkOrdered<u32>>()), TRY(stream.read_value<NetworkOrdered<u16>>()));
-                    torrent.peers().append(p);
-                }
+                while (!stream.is_eof())
+                    peers.append({ TRY(stream.read_value<NetworkOrdered<u32>>()), TRY(stream.read_value<NetworkOrdered<u16>>()) });
             }
 
-            on_complete();
+            on_complete(move(peers));
 
             return {};
         }.operator()();
@@ -269,6 +286,10 @@ ErrorOr<NonnullRefPtr<Engine>> Engine::try_create(bool skip_checking, bool assum
 {
     auto protocol_client = TRY(Protocol::RequestClient::try_create());
     return adopt_nonnull_ref_or_enomem(new (nothrow) Engine(move(protocol_client), skip_checking, assume_valid));
+}
+Vector<NonnullRefPtr<Data::TorrentContext>> Engine::get_torrent_contexts()
+{
+    return comm.get_torrent_contexts();
 }
 
 }

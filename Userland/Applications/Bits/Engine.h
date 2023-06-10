@@ -10,17 +10,21 @@
 #include "Data/Comm.h"
 #include <LibCore/Object.h>
 #include <LibProtocol/RequestClient.h>
+
 namespace Bits {
 
 class Engine : public Core::Object {
     C_OBJECT(Engine);
 
 public:
+    inline static Bits::Engine* s_engine;
     static ErrorOr<NonnullRefPtr<Engine>> try_create(bool skip_checking, bool assume_valid);
     ~Engine();
 
     Vector<NonnullRefPtr<Torrent>> torrents() { return m_torrents; }
     void add_torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
+    Optional<NonnullRefPtr<Data::TorrentContext>> get_torrent_context(ReadonlyBytes);
+    Vector<NonnullRefPtr<Data::TorrentContext>> get_torrent_contexts();
     void start_torrent(int);
     void stop_torrent(int);
     void cancel_checking(int);
@@ -38,7 +42,7 @@ private:
     HashTable<NonnullRefPtr<Protocol::Request>> m_active_requests;
 
     Vector<NonnullRefPtr<Torrent>> m_torrents;
-    ErrorOr<void> announce(Torrent&, Function<void()> on_complete);
+    ErrorOr<void> announce(Torrent& torrent, Function<void(Vector<Core::SocketAddress>)> on_complete);
 
     Data::Comm comm;
     bool m_skip_checking;

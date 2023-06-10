@@ -7,6 +7,7 @@
 #include "BitField.h"
 
 namespace Bits {
+
 BitField::BitField(u64 size)
     : m_size(size)
 {
@@ -26,6 +27,13 @@ BitField::BitField(ByteBuffer data, u64 size)
             m_ones++;
     }
 }
+
+//BitField::BitField(BitField const& other)
+//{
+//    m_size = other.m_size;
+//    m_data = other.m_data;
+//    m_ones = other.m_ones;
+//}
 
 bool BitField::get(u64 index) const
 {
@@ -54,7 +62,8 @@ ErrorOr<void> BitField::write_to_stream(Stream& stream) const
     return {};
 }
 
-ErrorOr<BitField> BitField::read_from_stream(Stream& stream) {
+ErrorOr<BitField> BitField::read_from_stream(Stream& stream)
+{
     // This works only when the bitfield is the last thing to be read from the stream
     // (which is the case for the BT bitfield message type)
     auto data = TRY(stream.read_until_eof());

@@ -20,6 +20,8 @@ set(SOURCES
         Data/BitTorrentMessage.cpp
         Data/PeerContext.cpp
         PeersTabWidget.cpp
+        Data/TorrentContext.cpp
+        BK/PieceHeap.cpp
         )
 
 serenity_app(Bits ICON hard-disk)

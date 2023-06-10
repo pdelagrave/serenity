@@ -5,9 +5,15 @@
  */
 
 #include "TorrentModel.h"
+#include "Torrent.h"
+#include "Engine.h"
 #include <AK/NumberFormat.h>
+#include "Data/TorrentContext.h"
+#include "Data/PeerContext.h"
+#include "BK/PieceHeap.h"
 
 namespace Bits {
+
 int TorrentModel::row_count(GUI::ModelIndex const&) const
 {
     return m_torrents.size();
@@ -25,8 +31,9 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
 
     // TODO: progress in the taskbar
     // warn("\033]9;{};{};\033\\", downloaded_size, maybe_total_size.value());
-    auto torrent = m_torrents.at(index.row());
+    auto torrent = Engine::s_engine->torrents().at(index.row());
     MetaInfo& meta_info = torrent->meta_info();
+    auto tcontext = m_torrents.at(index.row());
     if (index.column() == 0)
         return torrent->display_name();
     else if (index.column() == 1)
@@ -34,7 +41,7 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
     else if (index.column() == 2)
         return state_to_string(torrent->state()).release_value_but_fixme_should_propagate_errors();
     else if (index.column() == 3)
-        return DeprecatedString::formatted("{:.1}%", torrent->state() == TorrentState::CHECKING ? torrent->check_progress() : torrent->local_bitfield().progress());
+        return DeprecatedString::formatted("{:.1}%", torrent->state() == TorrentState::CHECKING ? torrent->check_progress() : tcontext->local_bitfield.progress());
     else if (index.column() == 4)
         return "torrent->data_path()";
     else
