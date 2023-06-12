@@ -16,6 +16,8 @@ Comm::Comm()
 {
     m_thread = Threading::Thread::construct([this]() -> intptr_t {
         m_event_loop = make<Core::EventLoop>();
+        gettimeofday(&m_last_speed_measurement, nullptr);
+        start_timer(3000);
         return m_event_loop->exec();
     },
         "Data thread"sv);
@@ -32,7 +34,8 @@ ErrorOr<void> Comm::activate_torrent(NonnullOwnPtr<ActivateTorrentCommand> comma
     return TRY(post_command(move(command)));
 }
 
-Optional<NonnullRefPtr<Data::TorrentContext>> Comm::get_torrent_context(ReadonlyBytes info_hash) {
+Optional<NonnullRefPtr<Data::TorrentContext>> Comm::get_torrent_context(ReadonlyBytes info_hash)
+{
     auto x = m_tcontexts.get(info_hash);
     if (!x.has_value())
         return {};
@@ -65,6 +68,31 @@ void Comm::custom_event(Core::CustomEvent& event)
     }();
     if (err.is_error())
         dbgln("Error handling event: {}", err.error());
+}
+
+void Comm::timer_event(Core::TimerEvent&)
+{
+    timeval current_time;
+    timeval time_diff;
+    gettimeofday(&current_time, nullptr);
+    timersub(&current_time, &m_last_speed_measurement, &time_diff);
+    auto time_diff_ms = time_diff.tv_sec * 1000 + time_diff.tv_usec / 1000;
+    for (auto const& torrent : m_tcontexts) {
+        u64 upload_speed = 0;
+        u64 download_speed = 0;
+        for (auto const& peer : torrent.value->connected_peers) {
+            peer->download_speed = (peer->bytes_downloaded_since_last_speed_measurement / time_diff_ms) * 1000;
+            peer->bytes_downloaded_since_last_speed_measurement = 0;
+            download_speed += peer->download_speed;
+
+            peer->upload_speed = (peer->bytes_uploaded_since_last_speed_measurement / time_diff_ms) * 1000;
+            peer->bytes_uploaded_since_last_speed_measurement = 0;
+            upload_speed += peer->upload_speed;
+        }
+        torrent.value->upload_speed = upload_speed;
+        torrent.value->download_speed = download_speed;
+    }
+    m_last_speed_measurement = current_time;
 }
 
 ErrorOr<void> Comm::post_command(NonnullOwnPtr<Command> command)
@@ -268,6 +296,7 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> pcontext)
         auto will_read = min(pending_bytes, pcontext->incoming_message_length - pcontext->incoming_message_buffer.size());
         //        dbglnc(context, "Will read {} bytes", will_read);
         TRY(socket->read_until_filled(TRY(pcontext->incoming_message_buffer.get_bytes_for_writing(will_read))));
+        pcontext->bytes_downloaded_since_last_speed_measurement += will_read;
 
         if (pcontext->incoming_message_buffer.size() == pcontext->incoming_message_length) {
             auto message_stream = FixedMemoryStream(pcontext->incoming_message_buffer.bytes());
@@ -353,7 +382,7 @@ void Comm::flush_output_buffer(NonnullRefPtr<PeerContext> pcontext, RefPtr<PeerC
             }
             return;
         }
-        //        dbglncc(parent_context, context, "Wrote {} bytes to socket", err.value());
+        pcontext->bytes_uploaded_since_last_speed_measurement += err.release_value();
 
         if (pcontext->output_message_buffer.used_space() == 0) {
             //            dbglncc(parent_context, context, "Output message buffer is empty, we sent everything, disabling ready to write notifier");
@@ -457,6 +486,8 @@ void Comm::set_peer_errored(NonnullRefPtr<PeerContext> pcontext)
     pcontext->socket_writable_notifier->close();
     pcontext->socket->close();
     pcontext->torrent_context->connected_peers.remove(pcontext);
+    pcontext->download_speed = 0;
+    pcontext->upload_speed = 0;
     connect_more_peers(pcontext->torrent_context);
 }
 

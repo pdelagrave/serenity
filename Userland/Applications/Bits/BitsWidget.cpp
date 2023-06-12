@@ -7,15 +7,14 @@
 #include "BitsWidget.h"
 #include "BitsUiEvents.h"
 #include "Engine.h"
-#include "LibGUI/Splitter.h"
 #include "MetaInfo.h"
 #include "PeersTabWidget.h"
-#include "Torrent.h"
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Menu.h>
 #include <LibGUI/SortingProxyModel.h>
+#include <LibGUI/Splitter.h>
 
 namespace Bits {
 

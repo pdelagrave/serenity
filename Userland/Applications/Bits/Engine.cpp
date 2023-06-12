@@ -20,13 +20,14 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
         optional_root_dir = DeprecatedString::formatted("/{}", torrent_root_dir.value());
     }
 
+    auto root_data_path = DeprecatedString::formatted("{}{}", data_path, optional_root_dir);
     auto local_files = make<Vector<NonnullRefPtr<LocalFile>>>();
     for (auto f : meta_info->files()) {
-        auto local_path = DeprecatedString::formatted("{}{}/{}", data_path, optional_root_dir, f->path());
+        auto local_path = DeprecatedString::formatted("{}/{}", root_data_path, f->path());
         local_files->append(make_ref_counted<LocalFile>(move(local_path), move(f)));
     }
 
-    NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(local_files));
+    NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(local_files), root_data_path);
     m_torrents.append(move(torrent));
 }
 

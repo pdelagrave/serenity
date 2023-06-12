@@ -26,13 +26,14 @@ ErrorOr<String> state_to_string(TorrentState state)
     }
 }
 
-Torrent::Torrent(NonnullOwnPtr<MetaInfo> meta_info, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> local_files)
+Torrent::Torrent(NonnullOwnPtr<MetaInfo> meta_info, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> local_files, DeprecatedString data_path)
     : m_meta_info(move(meta_info))
     , m_piece_count(AK::ceil_div(m_meta_info->total_length(), m_meta_info->piece_length()))
     , m_local_files(move(local_files))
     , m_display_name(m_meta_info->root_dir_name().value_or(m_meta_info->files()[0]->path()))
     , m_data_file_map(make<TorrentDataFileMap>(m_meta_info->piece_hashes(), m_meta_info->piece_length(), make<Vector<NonnullRefPtr<LocalFile>>>(*m_local_files)))
     , m_state(TorrentState::STOPPED)
+    , m_data_path(move(data_path))
 {
     m_local_peer_id.resize(20);
     fill_with_random({ m_local_peer_id.data(), m_local_peer_id.size() });

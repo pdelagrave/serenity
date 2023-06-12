@@ -36,6 +36,9 @@ struct TorrentContext : RefCounted<TorrentContext> {
     HashTable<NonnullRefPtr<PeerContext>> all_peers;
     HashTable<NonnullRefPtr<PeerContext>> connected_peers;
 
+    u64 download_speed { 0 };
+    u64 upload_speed { 0 };
+
     u64 piece_length(u64 piece_index) const { return piece_index == piece_count - 1 ? total_length % nominal_piece_length : nominal_piece_length; }
 };
 

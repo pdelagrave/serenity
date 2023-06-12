@@ -20,32 +20,40 @@ int TorrentModel::row_count(GUI::ModelIndex const&) const
 }
 int TorrentModel::column_count(GUI::ModelIndex const&) const
 {
-    return m_columns.size();
+    return Column::__Count;
 }
 GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole role) const
 {
-    if (role != GUI::ModelRole::Display)
-        return {};
-    if (!is_within_range(index))
-        return {};
+    if (role == GUI::ModelRole::TextAlignment)
+        return Gfx::TextAlignment::CenterLeft;
+    if (role == GUI::ModelRole::Display) {
+        // TODO: progress in the taskbar
+        // warn("\033]9;{};{};\033\\", downloaded_size, maybe_total_size.value());
 
-    // TODO: progress in the taskbar
-    // warn("\033]9;{};{};\033\\", downloaded_size, maybe_total_size.value());
-    auto torrent = Engine::s_engine->torrents().at(index.row());
-    MetaInfo& meta_info = torrent->meta_info();
-    auto tcontext = m_torrents.at(index.row());
-    if (index.column() == 0)
-        return torrent->display_name();
-    else if (index.column() == 1)
-        return AK::human_readable_quantity(meta_info.total_length());
-    else if (index.column() == 2)
-        return state_to_string(torrent->state()).release_value_but_fixme_should_propagate_errors();
-    else if (index.column() == 3)
-        return DeprecatedString::formatted("{:.1}%", torrent->state() == TorrentState::CHECKING ? torrent->check_progress() : tcontext->local_bitfield.progress());
-    else if (index.column() == 4)
-        return "torrent->data_path()";
-    else
-        return "??";
+        auto torrent = Engine::s_engine->torrents().at(index.row());
+        MetaInfo& meta_info = torrent->meta_info();
+        auto tcontext = m_torrents.at(index.row());
+
+        switch (index.column()) {
+        case Column::Name:
+            return torrent->display_name();
+        case Column::Size:
+            return AK::human_readable_quantity(meta_info.total_length());
+        case Column::State:
+            return state_to_string(torrent->state()).release_value_but_fixme_should_propagate_errors();
+        case Column::Progress:
+            return DeprecatedString::formatted("{:.1}%", torrent->state() == TorrentState::CHECKING ? torrent->check_progress() : tcontext->local_bitfield.progress());
+        case Column::DownloadSpeed:
+            return DeprecatedString::formatted("{}/s", human_readable_size(tcontext->download_speed));
+        case Column::UploadSpeed:
+            return DeprecatedString::formatted("{}/s", human_readable_size(tcontext->upload_speed));
+        case Column::Path:
+            return torrent->data_path();
+        default:
+            VERIFY_NOT_REACHED();
+        }
+    }
+    return {};
 }
 
 void TorrentModel::update()
@@ -53,9 +61,26 @@ void TorrentModel::update()
     m_torrents = m_get_updated_torrent_list();
     did_update(UpdateFlag::DontInvalidateIndices);
 }
-String TorrentModel::column_name(int i) const
+String TorrentModel::column_name(int column) const
 {
-    return m_columns.at(i);
+    switch (column) {
+    case Column::Name:
+        return "Name"_short_string;
+    case Column::Size:
+        return "Size"_short_string;
+    case Column::State:
+        return "State"_string.release_value();
+    case Column::Progress:
+        return "Progress"_string.release_value();
+    case Column::DownloadSpeed:
+        return "Download Speed"_string.release_value();
+    case Column::UploadSpeed:
+        return "Upload Speed"_string.release_value();
+    case Column::Path:
+        return "Path"_string.release_value();
+    default:
+        VERIFY_NOT_REACHED();
+    }
 }
 
 }

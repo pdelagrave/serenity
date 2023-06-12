@@ -38,9 +38,19 @@ private:
     TorrentModel(TorrentListCallback callback)
         : m_get_updated_torrent_list(move(callback)) {};
 
+    enum Column {
+        Name,
+        Size,
+        State,
+        Progress,
+        DownloadSpeed,
+        UploadSpeed,
+        Path,
+        __Count
+    };
+
     TorrentListCallback m_get_updated_torrent_list;
     Vector<NonnullRefPtr<Data::TorrentContext>> m_torrents;
-    Vector<String> m_columns = { "Name"_string.release_value(), "Size"_string.release_value(), "State"_string.release_value(), "Progress"_string.release_value(), "Local path"_string.release_value() };
 };
 
 }

@@ -22,6 +22,7 @@ struct PeerContext : public RefCounted<PeerContext> {
     const Core::SocketAddress address;
 
     bool got_handshake = false;
+    // TODO: Make this into a PeerContextState enum?
     bool connected = false;
     bool active = false;
     bool errored = false;
@@ -44,6 +45,12 @@ struct PeerContext : public RefCounted<PeerContext> {
 
     u32 incoming_message_length = sizeof(BitTorrent::Handshake);
     ByteBuffer incoming_message_buffer {};
+
+    u64 bytes_downloaded_since_last_speed_measurement { 0 };
+    u64 download_speed { 0 };
+
+    u64 bytes_uploaded_since_last_speed_measurement { 0 };
+    u64 upload_speed { 0 };
 
     CircularBuffer output_message_buffer;
     RefPtr<Core::Notifier> socket_writable_notifier {};

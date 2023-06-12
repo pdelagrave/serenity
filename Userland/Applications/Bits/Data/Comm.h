@@ -30,6 +30,7 @@ public:
 
 protected:
     void custom_event(Core::CustomEvent& event) override;
+    void timer_event(Core::TimerEvent&) override;
 
 private:
     // TODO find the best request block length value
@@ -39,8 +40,8 @@ private:
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
 
-    HashTable<NonnullRefPtr<Peer>> m_active_peers;
     HashMap<ReadonlyBytes, NonnullRefPtr<TorrentContext>> m_tcontexts;
+    timeval m_last_speed_measurement;
 
     // Bits Engine/Comm internal commands
     ErrorOr<void> post_command(NonnullOwnPtr<Command> command);

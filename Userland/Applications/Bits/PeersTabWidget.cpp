@@ -5,8 +5,9 @@
  */
 
 #include "PeersTabWidget.h"
-#include "Data/TorrentContext.h"
 #include "Data/PeerContext.h"
+#include "Data/TorrentContext.h"
+#include <AK/NumberFormat.h>
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Model.h>
 
@@ -83,9 +84,9 @@ public:
             case Column::Progress:
                 return DeprecatedString::formatted("{:.1}%", peer->bitfield.progress());
             case Column::DownloadSpeed:
-                return "1"_string.release_value();
+                return DeprecatedString::formatted("{}/s", human_readable_size(peer->download_speed));
             case Column::UploadSpeed:
-                return "2"_string.release_value();
+                return DeprecatedString::formatted("{}/s", human_readable_size(peer->upload_speed));
             case Column::IsChokedByUs:
                 return peer->we_are_choking_peer;
             case Column::IsChokingUs:

@@ -27,7 +27,7 @@ ErrorOr<String> state_to_string(TorrentState state);
 
 class Torrent : public RefCounted<Torrent> {
 public:
-    Torrent(NonnullOwnPtr<MetaInfo>, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>>);
+    Torrent(NonnullOwnPtr<MetaInfo>, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>>, DeprecatedString data_path);
     ~Torrent();
     MetaInfo& meta_info() { return *m_meta_info; }
     u64 piece_count() const { return m_piece_count; }
@@ -39,6 +39,7 @@ public:
     DeprecatedString const& display_name() const { return m_display_name; }
     NonnullOwnPtr<TorrentDataFileMap> data_file_map() { return move(m_data_file_map); }
     float check_progress() const { return (float) m_piece_verified * 100 / (float) m_piece_count; }
+    DeprecatedString data_path() { return m_data_path;}
 
     void checking_in_background(bool skip, bool assume_valid, Function<void(BitField)> on_complete);
     void cancel_checking();
@@ -55,8 +56,9 @@ private:
     NonnullOwnPtr<TorrentDataFileMap> m_data_file_map;
     RefPtr<Threading::BackgroundAction<BitField>> m_background_checker;
     u64 m_piece_verified = 0;
-
     TorrentState m_state;
+
+    DeprecatedString m_data_path;
 };
 
 }
