@@ -54,6 +54,7 @@ private:
     ErrorOr<void> handle_handshake(NonnullOwnPtr<BitTorrent::Handshake> handshake, NonnullRefPtr<PeerContext> pcontext);
     ErrorOr<void> handle_have(NonnullOwnPtr<BitTorrent::Have> have_message, NonnullRefPtr<PeerContext> pcontext);
     ErrorOr<void> handle_piece(NonnullOwnPtr<BitTorrent::Piece>, NonnullRefPtr<PeerContext> pcontext);
+    ErrorOr<void> parse_input_message(SeekableStream& stream, NonnullRefPtr<PeerContext> peer);
 
     // Comm BT low level network functions
     ErrorOr<void> read_from_socket(NonnullRefPtr<PeerContext> pcontext);

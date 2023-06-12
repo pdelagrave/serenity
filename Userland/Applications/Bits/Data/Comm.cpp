@@ -20,7 +20,7 @@ Comm::Comm()
         start_timer(3000);
         return m_event_loop->exec();
     },
-        "Data thread"sv);
+        "Comm thread"sv);
     m_thread->start();
 }
 
@@ -117,7 +117,7 @@ ErrorOr<void> Comm::handle_command_add_peers(AddPeersCommand const& command)
     auto torrent = m_torrent_contexts.get(command.info_hash).value();
     for (auto const& peer_address : command.peers) {
         // TODO algo for dupes, deleted (tracker announce doesn't return one anymore and we're downloading/uploading from it?)
-        auto peer = TRY(PeerContext::try_create(*torrent, peer_address, 1 * MiB));
+        auto peer = TRY(PeerContext::try_create(*torrent, peer_address, 10 * MiB, 1 * MiB));
         // assuming peers are added only once
         torrent->all_peers.set(move(peer));
     }
@@ -164,12 +164,6 @@ ErrorOr<void> Comm::handle_command_piece_downloaded(PieceDownloadedCommand const
 
 ErrorOr<void> Comm::handle_bitfield(NonnullOwnPtr<BitTorrent::BitFieldMessage> bitfield, NonnullRefPtr<PeerContext> peer)
 {
-    //    auto bitfield_data_size = context->torrent->local_bitfield().data_size();
-    //    if (bytes.size() != bitfield_data_size) {
-    //        warnln("Bitfield sent by peer has a size ({}) different than expected({})", bytes.size(), bitfield_data_size);
-    //        return Error::from_string_literal("Bitfield sent by peer has a size different from expected");
-    //    }
-
     peer->bitfield = bitfield->bitfield;
     dbglnc("Set bitfield for peer. size: {} data_size: {}", peer->bitfield.size(), peer->bitfield.data_size());
 
@@ -255,9 +249,60 @@ ErrorOr<void> Comm::handle_piece(NonnullOwnPtr<BitTorrent::Piece> piece_message,
     return {};
 }
 
+ErrorOr<void> Comm::parse_input_message(SeekableStream& stream, NonnullRefPtr<PeerContext> peer)
+{
+    if (!peer->got_handshake) {
+        dbglnc("No handshake yet, trying to read and parse it");
+        TRY(handle_handshake(TRY(BitTorrent::Handshake::try_create(stream)), peer));
+        send_message(make<BitTorrent::BitFieldMessage>(BitField(peer->torrent_context->local_bitfield)), peer);
+        return {};
+    }
+
+    using MessageType = Bits::BitTorrent::Message::Type;
+    auto message_type = TRY(stream.read_value<MessageType>());
+    dbglnc("Got message type {}", Bits::BitTorrent::Message::to_string(message_type));
+    TRY(stream.seek(0, AK::SeekMode::SetPosition));
+    peer->incoming_message_length = 0;
+
+    switch (message_type) {
+    case MessageType::Choke:
+        peer->peer_is_choking_us = true;
+        TRY(piece_or_peer_availability_updated(peer->torrent_context));
+        break;
+    case MessageType::Unchoke:
+        peer->peer_is_choking_us = false;
+        TRY(piece_or_peer_availability_updated(peer->torrent_context));
+        break;
+    case MessageType::Interested:
+        peer->peer_is_interested_in_us = true;
+        break;
+    case MessageType::NotInterested:
+        peer->peer_is_interested_in_us = false;
+        break;
+    case MessageType::Have:
+        TRY(handle_have(make<BitTorrent::Have>(stream), peer));
+        break;
+    case MessageType::Bitfield:
+        TRY(handle_bitfield(make<BitTorrent::BitFieldMessage>(stream), peer));
+        break;
+    case MessageType::Request:
+        dbglnc("ERROR: Message type Request is unsupported");
+        break;
+    case MessageType::Piece:
+        TRY(handle_piece(make<BitTorrent::Piece>(stream), peer));
+        break;
+    case MessageType::Cancel:
+        dbglnc("ERROR: message type Cancel is unsupported");
+        break;
+    default:
+        dbglnc("ERROR: Got unsupported message type: {:02X}: {}", (u8)message_type, BitTorrent::Message::to_string(message_type));
+        break;
+    }
+    return {};
+}
+
 ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> peer)
 {
-    // TODO: cleanup this mess, read everything we can in a buffer at every call first.
     auto& socket = peer->socket;
     // dbglnc(context, "Reading from socket");
 
@@ -271,82 +316,37 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> peer)
         socket->close();
         return {};
     }
-    if (TRY(socket->can_read_without_blocking())) {
-        if (peer->incoming_message_length == 0) {
-            // dbglnc(context, "Incoming message length is 0");
-            if (TRY(socket->pending_bytes()) >= 2) {
-                // dbglnc(context, "Socket has at least 2 pending bytes");
-                peer->incoming_message_length = TRY(socket->read_value<BigEndian<u32>>());
-                if (peer->incoming_message_length == 0) {
-                    dbglnc("Received keep-alive");
-                    return {};
-                } else {
-                    peer->incoming_message_buffer.clear();
-                    peer->incoming_message_buffer.ensure_capacity(peer->incoming_message_length);
-                }
+
+    for (;;) {
+        auto nread_or_error = peer->input_message_buffer.fill_from_stream(*socket);
+        if (nread_or_error.is_error()) {
+            auto code = nread_or_error.error().code();
+            if (code == EINTR) {
+                continue;
+            } else if (code == EAGAIN) {
+                break;
             } else {
-                // dbglnc(context, "Socket has only {} pending bytes", TRY(socket->pending_bytes()));
-                return {};
+                dbglnc("Error reading from socket: err: {}  code: {}  codestr: {}", nread_or_error.error(), code, strerror(code));
+                return Error::from_string_literal("Error reading from socket");
             }
         }
+        peer->bytes_downloaded_since_last_speed_measurement += nread_or_error.value();
+    }
 
-        auto pending_bytes = TRY(socket->pending_bytes());
-        //        dbglnc(context, "Socket has {} pending bytes", pending_bytes);
-        //        dbglnc(context, "Incoming message length is {}", context->incoming_message_length);
-        //        dbglnc(context, "Incoming message buffer size is {}", context->incoming_message_buffer.size());
-        auto will_read = min(pending_bytes, peer->incoming_message_length - peer->incoming_message_buffer.size());
-        //        dbglnc(context, "Will read {} bytes", will_read);
-        TRY(socket->read_until_filled(TRY(peer->incoming_message_buffer.get_bytes_for_writing(will_read))));
-        peer->bytes_downloaded_since_last_speed_measurement += will_read;
-
-        if (peer->incoming_message_buffer.size() == peer->incoming_message_length) {
-            auto message_stream = FixedMemoryStream(peer->incoming_message_buffer.bytes());
-            if (!peer->got_handshake) {
-                dbglnc("No handshake yet, trying to read and parse it");
-                TRY(handle_handshake(TRY(BitTorrent::Handshake::try_create(message_stream)), peer));
-                send_message(make<BitTorrent::BitFieldMessage>(BitField(peer->torrent_context->local_bitfield)), peer);
-            } else {
-                using MessageType = Bits::BitTorrent::Message::Type;
-                auto message_type = TRY(message_stream.read_value<MessageType>());
-                dbglnc("Got message type {}", Bits::BitTorrent::Message::to_string(message_type));
-                TRY(message_stream.seek(0, AK::SeekMode::SetPosition));
-                peer->incoming_message_length = 0;
-
-                switch (message_type) {
-                case MessageType::Choke:
-                    peer->peer_is_choking_us = true;
-                    TRY(piece_or_peer_availability_updated(peer->torrent_context));
-                    break;
-                case MessageType::Unchoke:
-                    peer->peer_is_choking_us = false;
-                    TRY(piece_or_peer_availability_updated(peer->torrent_context));
-                    break;
-                case MessageType::Interested:
-                    peer->peer_is_interested_in_us = true;
-                    break;
-                case MessageType::NotInterested:
-                    peer->peer_is_interested_in_us = false;
-                    break;
-                case MessageType::Have:
-                    TRY(handle_have(make<BitTorrent::Have>(message_stream), peer));
-                    break;
-                case MessageType::Bitfield:
-                    TRY(handle_bitfield(make<BitTorrent::BitFieldMessage>(message_stream), peer));
-                    break;
-                case MessageType::Request:
-                    dbglnc("ERROR: Message type Request is unsupported");
-                    break;
-                case MessageType::Piece:
-                    TRY(handle_piece(make<BitTorrent::Piece>(message_stream), peer));
-                    break;
-                case MessageType::Cancel:
-                    dbglnc("ERROR: message type Cancel is unsupported");
-                    break;
-                default:
-                    dbglnc("ERROR: Got unsupported message type: {:02X}: {}", (u8)message_type, BitTorrent::Message::to_string(message_type));
-                    break;
-                }
-            }
+    while (peer->input_message_buffer.used_space() >= peer->incoming_message_length) {
+        if (peer->incoming_message_length > 0) {
+            auto buffer = TRY(ByteBuffer::create_uninitialized(peer->incoming_message_length));
+            VERIFY(peer->input_message_buffer.read(buffer.bytes()).size() == peer->incoming_message_length);
+            auto message_byte_stream = FixedMemoryStream(buffer.bytes());
+            TRY(parse_input_message(message_byte_stream, peer));
+            peer->incoming_message_length = 0;
+        } else if (peer->input_message_buffer.used_space() >= 4) {
+            peer->input_message_buffer.read({&peer->incoming_message_length, sizeof(peer->incoming_message_length)});
+            if (peer->incoming_message_length == 0)
+                dbglnc("Received keep-alive");
+        } else {
+            // Not enough bytes to read the length of the next message
+            return {};
         }
     }
     return {};
@@ -374,11 +374,14 @@ void Comm::flush_output_buffer(NonnullRefPtr<PeerContext> peer)
     for (;;) {
         auto err = peer->output_message_buffer.flush_to_stream(*peer->socket);
         if (err.is_error()) {
-            if (err.error().code() == EAGAIN || err.error().code() == EWOULDBLOCK || err.error().code() == EINTR) {
+            auto code = err.error().code();
+            if (code == EINTR) {
+                continue;
+            } else if (code == EAGAIN) {
                 dbglnc("Socket is not ready to write, enabling read to write notifier");
                 peer->socket_writable_notifier->set_enabled(true);
             } else {
-                dbglnc("Error writing to socket: err: {}  code: {}  codestr: {}", err.error(), err.error().code(), strerror(err.error().code()));
+                dbglnc("Error writing to socket: err: {}  code: {}  codestr: {}", err.error(), code, strerror(code));
                 set_peer_errored(peer);
             }
             return;

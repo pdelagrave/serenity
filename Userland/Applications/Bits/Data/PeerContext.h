@@ -15,8 +15,8 @@ namespace Bits::Data {
 struct TorrentContext;
 
 struct PeerContext : public RefCounted<PeerContext> {
-    PeerContext(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, CircularBuffer output_message_buffer);
-    static ErrorOr<NonnullRefPtr<PeerContext>> try_create(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, size_t output_buffer_size);
+    PeerContext(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, CircularBuffer input_message_buffer, CircularBuffer output_message_buffer);
+    static ErrorOr<NonnullRefPtr<PeerContext>> try_create(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, size_t input_buffer_size, size_t output_buffer_size);
 
     const NonnullRefPtr<TorrentContext> torrent_context;
     const Core::SocketAddress address;
@@ -44,8 +44,8 @@ struct PeerContext : public RefCounted<PeerContext> {
         size_t length;
     } incoming_piece;
 
-    u32 incoming_message_length = sizeof(BitTorrent::Handshake);
-    ByteBuffer incoming_message_buffer {};
+    BigEndian<u32> incoming_message_length = sizeof(BitTorrent::Handshake);
+    CircularBuffer input_message_buffer;
 
     u64 bytes_downloaded_since_last_speed_measurement { 0 };
     u64 download_speed { 0 };
