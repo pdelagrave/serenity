@@ -104,6 +104,12 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Engine> engi
         500, [widget] {
             widget->m_torrent_model->update();
             widget->m_peer_list_widget->refresh();
+
+            u64 progress = 0;
+            for (auto const& torrent : widget->m_engine->get_torrent_contexts()) {
+                progress += torrent->local_bitfield.progress();
+            }
+            warn("\033]9;{};{};\033\\", progress, widget->m_engine->get_torrent_contexts().size() * 100);
         });
     widget->m_update_timer->start();
 

@@ -27,9 +27,6 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
     if (role == GUI::ModelRole::TextAlignment)
         return Gfx::TextAlignment::CenterLeft;
     if (role == GUI::ModelRole::Display) {
-        // TODO: progress in the taskbar
-        // warn("\033]9;{};{};\033\\", downloaded_size, maybe_total_size.value());
-
         auto torrent = Engine::s_engine->torrents().at(index.row());
         MetaInfo& meta_info = torrent->meta_info();
         auto tcontext = m_torrents.at(index.row());
