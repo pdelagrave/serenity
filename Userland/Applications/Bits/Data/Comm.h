@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include "../Peer.h"
-#include "../Torrent.h"
 #include "Command.h"
 #include "PeerContext.h"
 #include "TorrentContext.h"
@@ -25,6 +23,7 @@ public:
     Optional<NonnullRefPtr<Data::TorrentContext>> get_torrent_context(ReadonlyBytes);
     Vector<NonnullRefPtr<Data::TorrentContext>> get_torrent_contexts();
 
+    // TODO: remove the peercontext->active system, because it's not respecting the connection limits.
     const u16 max_total_connections = 100;
     const u16 max_total_connections_per_torrent = 10;
 
@@ -66,7 +65,7 @@ private:
     // BT higher level logic
     ErrorOr<void> piece_or_peer_availability_updated(RefPtr<PeerContext> pcontext);
     ErrorOr<bool> update_piece_availability(u64 piece_index, NonnullRefPtr<PeerContext> pcontext);
-    ErrorOr<void> insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index);
+    void insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index);
 
     // dbgln with Context
     template<typename... Parameters>

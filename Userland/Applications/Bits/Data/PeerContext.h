@@ -36,6 +36,7 @@ struct PeerContext : public RefCounted<PeerContext> {
     BitField bitfield {0};
     HashTable<u64> interesting_pieces;
 
+    // TODO: move this to PieceStatus?
     struct {
         ByteBuffer data;
         Optional<size_t> index;

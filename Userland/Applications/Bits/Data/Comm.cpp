@@ -154,7 +154,7 @@ ErrorOr<void> Comm::handle_command_piece_downloaded(PieceDownloadedCommand const
             TRY(send_message(make<BitTorrent::Have>(index), connected_peer));
 
     } else {
-        TRY(insert_piece_in_heap(tcontext, index));
+        insert_piece_in_heap(tcontext, index);
         dbglnc(pcontext, "Piece {} failed hash check", index);
     }
     TRY(piece_or_peer_availability_updated(pcontext));
@@ -243,7 +243,7 @@ ErrorOr<void> Comm::handle_piece(NonnullOwnPtr<BitTorrent::Piece> piece_message,
             dbglnc(pcontext, "Weren't done downloading the blocks for this piece {}, but peer is choking us, so we're giving up on it", index);
             piece.index = {};
             pcontext->active = false;
-            TRY(insert_piece_in_heap(tcontext, index));
+            insert_piece_in_heap(tcontext, index);
             TRY(piece_or_peer_availability_updated(pcontext));
         } else {
             auto next_block_length = min((size_t)BlockLength, (size_t)piece.length - piece.offset);
@@ -479,16 +479,32 @@ ErrorOr<void> Comm::connect_to_peer(NonnullRefPtr<PeerContext> pcontext)
 
 void Comm::set_peer_errored(NonnullRefPtr<PeerContext> pcontext)
 {
-    // TODO cleanup the piece status for this peer
+    auto torrent = pcontext->torrent_context;
+    for (auto const& piece_index : pcontext->interesting_pieces) {
+        torrent->missing_pieces.get(piece_index).value()->havers.remove(pcontext);
+    }
+
+    auto& piece = pcontext->incoming_piece;
+    if (piece.index.has_value()) {
+        insert_piece_in_heap(torrent, piece.index.value());
+        piece.index = {};
+    }
+
     pcontext->active = false;
     pcontext->connected = false;
     pcontext->errored = true;
+    
     pcontext->socket_writable_notifier->close();
     pcontext->socket->close();
-    pcontext->torrent_context->connected_peers.remove(pcontext);
+
+    torrent->connected_peers.remove(pcontext);
+    
     pcontext->download_speed = 0;
     pcontext->upload_speed = 0;
-    connect_more_peers(pcontext->torrent_context);
+    pcontext->bytes_downloaded_since_last_speed_measurement = 0;
+    pcontext->bytes_uploaded_since_last_speed_measurement = 0;
+    
+    connect_more_peers(torrent);
 }
 
 ErrorOr<void> Comm::piece_or_peer_availability_updated(RefPtr<PeerContext> pcontext)
@@ -571,12 +587,11 @@ ErrorOr<bool> Comm::update_piece_availability(u64 piece_index, NonnullRefPtr<Pee
     return true;
 }
 
-ErrorOr<void> Comm::insert_piece_in_heap(NonnullRefPtr<TorrentContext> tcontext, u64 piece_index)
+void Comm::insert_piece_in_heap(NonnullRefPtr<TorrentContext> tcontext, u64 piece_index)
 {
     auto piece_status = tcontext->missing_pieces.get(piece_index).value();
     piece_status->currently_downloading = false;
     tcontext->piece_heap.insert(*piece_status);
-    return {};
 }
 
 }
