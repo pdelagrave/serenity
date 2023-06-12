@@ -39,7 +39,7 @@ private:
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
 
-    HashMap<ReadonlyBytes, NonnullRefPtr<TorrentContext>> m_tcontexts;
+    HashMap<ReadonlyBytes, NonnullRefPtr<TorrentContext>> m_torrent_contexts;
     timeval m_last_speed_measurement;
 
     // Bits Engine/Comm internal commands
@@ -63,7 +63,7 @@ private:
     void set_peer_errored(NonnullRefPtr<PeerContext> pcontext);
 
     // BT higher level logic
-    ErrorOr<void> piece_or_peer_availability_updated(RefPtr<PeerContext> pcontext);
+    ErrorOr<void> piece_or_peer_availability_updated(RefPtr<PeerContext> forlogging);
     ErrorOr<bool> update_piece_availability(u64 piece_index, NonnullRefPtr<PeerContext> pcontext);
     void insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index);
 
