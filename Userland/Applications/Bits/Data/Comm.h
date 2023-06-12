@@ -9,6 +9,7 @@
 #include "Command.h"
 #include "PeerContext.h"
 #include "TorrentContext.h"
+#include <AK/Stack.h>
 #include <LibThreading/Mutex.h>
 
 namespace Bits::Data {
@@ -56,41 +57,31 @@ private:
 
     // Comm BT low level network functions
     ErrorOr<void> read_from_socket(NonnullRefPtr<PeerContext> pcontext);
-    ErrorOr<void> send_message(NonnullOwnPtr<BitTorrent::Message> message, NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context = {});
-    void flush_output_buffer(NonnullRefPtr<PeerContext> context, RefPtr<PeerContext> parent_context = {});
-    void connect_more_peers(NonnullRefPtr<TorrentContext>, RefPtr<PeerContext> forlogging = {});
+    void send_message(NonnullOwnPtr<BitTorrent::Message> message, NonnullRefPtr<PeerContext> peer);
+    void flush_output_buffer(NonnullRefPtr<PeerContext> peer);
+    void connect_more_peers(NonnullRefPtr<TorrentContext>);
     ErrorOr<void> connect_to_peer(NonnullRefPtr<PeerContext> pcontext);
     void set_peer_errored(NonnullRefPtr<PeerContext> pcontext);
 
     // BT higher level logic
-    ErrorOr<void> piece_or_peer_availability_updated(RefPtr<PeerContext> forlogging);
+    ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<TorrentContext> torrent);
     ErrorOr<bool> update_piece_availability(u64 piece_index, NonnullRefPtr<PeerContext> pcontext);
     void insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index);
 
     // dbgln with Context
-    template<typename... Parameters>
-    void dbglnc(RefPtr<PeerContext> context, CheckedFormatString<Parameters...>&& fmtstr, Parameters const&... parameters)
-    {
-//        if (true) {
-//            return;
-//        }
-        if (context.is_null())
-            dbgln(move(fmtstr), parameters...);
-        else
-            dbgln("[{:21}] {}", context->address, String::formatted(move(fmtstr), parameters...).value());
-    }
+    Vector<NonnullRefPtr<PeerContext>> m_peer_context_stack;
 
-    // dbgln with a sub context... TODO: Better use a stack of contexts in global variable?
     template<typename... Parameters>
-    void dbglncc(RefPtr<PeerContext> parent_context, NonnullRefPtr<PeerContext> sub_context, CheckedFormatString<Parameters...>&& fmtstr, Parameters const&... parameters)
+    void dbglnc(CheckedFormatString<Parameters...>&& fmtstr, Parameters const&... parameters)
     {
-//        if (true) {
-//            return;
-//        }
-        if (parent_context.is_null()){
-            dbglnc(sub_context, move(fmtstr), parameters...);}
-        else{
-            dbgln("[{:21}][{:21}] {}", parent_context->address, sub_context->address, String::formatted(move(fmtstr), parameters...).value());}
+        StringBuilder context_prefix;
+        for (auto const& context : m_peer_context_stack) {
+            context_prefix.appendff("[{:21}]", context->address);
+        }
+        if (m_peer_context_stack.size() > 0)
+            context_prefix.appendff(" ");
+
+        dbgln("{}{}", context_prefix.to_deprecated_string(), String::formatted(move(fmtstr), parameters...).value());
     }
 };
 

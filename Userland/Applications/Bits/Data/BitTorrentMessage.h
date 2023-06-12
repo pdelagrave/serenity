@@ -30,7 +30,7 @@ public:
         Piece = 0x07,
         Cancel = 0x08
     };
-    static ErrorOr<DeprecatedString> to_string(Type);
+    static DeprecatedString to_string(Type);
 
     u32 size() const { return serialized.size(); }
 
@@ -219,6 +219,6 @@ template<>
 struct AK::Formatter<Bits::BitTorrent::Message> : AK::Formatter<StringView> {
     ErrorOr<void> format(FormatBuilder& builder, Bits::BitTorrent::Message const& value)
     {
-        return Formatter<StringView>::format(builder, DeprecatedString::formatted("{} size: {}", TRY(Bits::BitTorrent::Message::to_string(value.type)), value.size()));
+        return Formatter<StringView>::format(builder, DeprecatedString::formatted("{} size: {}", Bits::BitTorrent::Message::to_string(value.type), value.size()));
     }
 };

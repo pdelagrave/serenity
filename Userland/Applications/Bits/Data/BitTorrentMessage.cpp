@@ -7,7 +7,7 @@
 #include "BitTorrentMessage.h"
 
 namespace Bits::BitTorrent {
-ErrorOr<DeprecatedString> Message::to_string(Type type)
+DeprecatedString Message::to_string(Type type)
 {
     switch (type) {
     case Type::Choke:
