@@ -46,7 +46,13 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
 
     auto& file_menu = window->add_menu("&File"_string.release_value());
     file_menu.add_action(GUI::CommonActions::make_open_action([&window, &bits_widget](auto&) {
-        auto x = FileSystemAccessClient::Client::the().open_file(window, {}, Core::StandardPaths::home_directory(), Core::File::OpenMode::Read);
+        FileSystemAccessClient::OpenFileOptions options {
+            .window_title =  "Open a torrent file"sv,
+            .path = Core::StandardPaths::home_directory(),
+            .requested_access = Core::File::OpenMode::Read,
+            .allowed_file_types = { { GUI::FileTypeFilter { "Torrent Files", { { "torrent" } } }, GUI::FileTypeFilter::all_files() } }
+        };
+        auto x = FileSystemAccessClient::Client::the().open_file(window, options);
         bits_widget->open_file(x.value().filename(), x.value().release_stream(), false).release_value();
     }));
 
