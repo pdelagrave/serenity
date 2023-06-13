@@ -18,11 +18,11 @@ PeerContext::PeerContext(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAdd
 {
 }
 
-ErrorOr<NonnullRefPtr<PeerContext>> PeerContext::try_create(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, size_t input_buffer_size, size_t output_buffer_size)
+NonnullRefPtr<PeerContext> PeerContext::create(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, size_t input_buffer_size, size_t output_buffer_size)
 {
-    auto input_buffer = TRY(CircularBuffer::create_empty(input_buffer_size));
-    auto output_buffer = TRY(CircularBuffer::create_empty(output_buffer_size));
-    return adopt_nonnull_ref_or_enomem(new (nothrow) PeerContext(tcontext, move(address), move(input_buffer), move(output_buffer)));
+    auto input_buffer = CircularBuffer::create_empty(input_buffer_size).release_value();
+    auto output_buffer = CircularBuffer::create_empty(output_buffer_size).release_value();
+    return adopt_nonnull_ref_or_enomem(new (nothrow) PeerContext(tcontext, move(address), move(input_buffer), move(output_buffer))).release_value();
 }
 
 }

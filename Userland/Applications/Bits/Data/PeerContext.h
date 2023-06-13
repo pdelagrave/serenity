@@ -17,7 +17,7 @@ struct TorrentContext;
 
 struct PeerContext : public RefCounted<PeerContext> {
     PeerContext(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, CircularBuffer input_message_buffer, CircularBuffer output_message_buffer);
-    static ErrorOr<NonnullRefPtr<PeerContext>> try_create(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, size_t input_buffer_size, size_t output_buffer_size);
+    static NonnullRefPtr<PeerContext> create(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, size_t input_buffer_size, size_t output_buffer_size);
 
     const NonnullRefPtr<TorrentContext> torrent_context;
     const Core::SocketAddress address;

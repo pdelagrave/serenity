@@ -6,8 +6,8 @@
 
 #include "Comm.h"
 #include "BitTorrentMessage.h"
-#include "Command.h"
 #include "PeerContext.h"
+#include <LibCore/EventLoop.h>
 #include <LibCore/System.h>
 
 namespace Bits::Data {
@@ -24,14 +24,36 @@ Comm::Comm()
     m_thread->start();
 }
 
-ErrorOr<void> Comm::add_peers(AddPeersCommand command)
+void Comm::add_peers(ReadonlyBytes info_hash, Vector<Core::SocketAddress> peers)
 {
-    return TRY(post_command(make<AddPeersCommand>(command)));
+    m_event_loop->deferred_invoke([this, info_hash, peers] {
+        auto torrent = m_torrent_contexts.get(info_hash).value();
+        for (auto const& peer_address : peers) {
+            // TODO algo for dupes, deleted (tracker announce doesn't return one anymore and we're downloading/uploading from it?)
+            auto peer = PeerContext::create(*torrent, peer_address, 10 * MiB, 1 * MiB);
+            // assuming peers are added only once
+            torrent->all_peers.set(move(peer));
+        }
+        connect_more_peers(*torrent);
+    });
 }
 
-ErrorOr<void> Comm::activate_torrent(NonnullOwnPtr<ActivateTorrentCommand> command)
+void Comm::activate_torrent(NonnullRefPtr<TorrentContext> torrent)
 {
-    return TRY(post_command(move(command)));
+    m_event_loop->deferred_invoke([this, torrent = move(torrent)] {
+        for (u64 i = 0; i < torrent->piece_count; i++) {
+            if (!torrent->local_bitfield.get(i))
+                torrent->missing_pieces.set(i, make_ref_counted<BK::PieceStatus>(i));
+        }
+        m_torrent_contexts.set(torrent->info_hash, move(torrent));
+    });
+}
+
+void Comm::deactivate_torrent(ReadonlyBytes)
+{
+    m_event_loop->deferred_invoke([] {
+        dbgln("deactivate torrent");
+    });
 }
 
 Optional<NonnullRefPtr<Data::TorrentContext>> Comm::get_torrent_context(ReadonlyBytes info_hash)
@@ -48,27 +70,6 @@ Vector<NonnullRefPtr<Data::TorrentContext>> Comm::get_torrent_contexts()
     for (auto& torrent : m_torrent_contexts)
         torrents.append(torrent.value);
     return torrents;
-}
-
-void Comm::custom_event(Core::CustomEvent& event)
-{
-    auto err = [&]() -> ErrorOr<void> {
-        switch (static_cast<Command::Type>(event.custom_type())) {
-        case Command::Type::ActivateTorrent:
-            return handle_command_activate_torrent(static_cast<ActivateTorrentCommand const&>(event));
-        case Command::Type::AddPeers:
-            return handle_command_add_peers(static_cast<AddPeersCommand const&>(event));
-        case Command::Type::PieceDownloaded:
-            return handle_command_piece_downloaded(static_cast<PieceDownloadedCommand const&>(event));
-        default:
-            Object::event(event);
-            break;
-        }
-        return {};
-    }();
-    if (err.is_error())
-        dbgln("Error handling event: {}", err.error());
-    m_peer_context_stack.clear();
 }
 
 void Comm::timer_event(Core::TimerEvent&)
@@ -115,43 +116,10 @@ void Comm::timer_event(Core::TimerEvent&)
     }
 }
 
-ErrorOr<void> Comm::post_command(NonnullOwnPtr<Command> command)
-{
-    m_event_loop->post_event(*this, move(command));
-    return {};
-}
 
-ErrorOr<void> Comm::handle_command_activate_torrent(ActivateTorrentCommand const& command)
+ErrorOr<void> Comm::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerContext> peer)
 {
-    auto torrent = move(command.torrent_context);
-    for (u64 i = 0; i < torrent->piece_count; i++) {
-        if (!torrent->local_bitfield.get(i))
-            torrent->missing_pieces.set(i, make_ref_counted<BK::PieceStatus>(i));
-    }
-    m_torrent_contexts.set(torrent->info_hash, move(torrent));
-    return {};
-}
-
-ErrorOr<void> Comm::handle_command_add_peers(AddPeersCommand const& command)
-{
-    auto torrent = m_torrent_contexts.get(command.info_hash).value();
-    for (auto const& peer_address : command.peers) {
-        // TODO algo for dupes, deleted (tracker announce doesn't return one anymore and we're downloading/uploading from it?)
-        auto peer = TRY(PeerContext::try_create(*torrent, peer_address, 10 * MiB, 1 * MiB));
-        // assuming peers are added only once
-        torrent->all_peers.set(move(peer));
-    }
-    connect_more_peers(*torrent);
-    return {};
-}
-
-ErrorOr<void> Comm::handle_command_piece_downloaded(PieceDownloadedCommand const& command)
-{
-    auto peer = command.peer_context();
-    m_peer_context_stack.append(peer);
     auto torrent = peer->torrent_context;
-    auto index = command.index();
-    auto data = command.data();
     if (TRY(torrent->data_file_map->validate_hash(index, data))) {
         TRY(torrent->data_file_map->write_piece(index, data));
 
@@ -185,6 +153,82 @@ ErrorOr<void> Comm::handle_command_piece_downloaded(PieceDownloadedCommand const
     return {};
 }
 
+ErrorOr<void> Comm::piece_or_peer_availability_updated(NonnullRefPtr<TorrentContext> torrent)
+{
+    size_t available_slots = 0;
+    for (auto const& peer : torrent->connected_peers)
+        available_slots += !peer->active;
+
+    dbglnc("We have {} inactive peers out of {} connected peers.", available_slots, torrent->connected_peers.size());
+    for (size_t i = 0; i < available_slots; i++) {
+        dbglnc("Trying to start a piece download on a {}th peer", i);
+        if (torrent->piece_heap.is_empty())
+            return {};
+
+        // TODO find out the rarest available piece, because the rarest piece might not be available right now.
+        auto next_piece_index = torrent->piece_heap.peek_min()->index_in_torrent;
+        dbglnc("Picked next piece for download {}", next_piece_index);
+        // TODO improve how we select the peer. Choking algo, bandwidth, etc
+        bool found_peer = false;
+        for (auto& haver : torrent->missing_pieces.get(next_piece_index).value()->havers) {
+            VERIFY(haver->connected);
+
+            dbglnc("Peer {} is choking us: {}, is active: {}", haver, haver->peer_is_choking_us, haver->active);
+            if (!haver->peer_is_choking_us && !haver->active) {
+                m_peer_context_stack.append(haver);
+                dbglnc("Requesting piece {} from peer {}", next_piece_index, haver);
+                haver->active = true;
+                u32 block_length = min(BlockLength, torrent->piece_length(next_piece_index));
+                send_message(make<BitTorrent::Request>(next_piece_index, 0, block_length), *haver);
+                m_peer_context_stack.remove(m_peer_context_stack.size() - 1);
+                found_peer = true;
+                break;
+            }
+        }
+        if (found_peer) {
+            dbglnc("Found peer for piece {}, popping the piece from the heap", next_piece_index);
+            auto piece_status = torrent->piece_heap.pop_min();
+            piece_status->currently_downloading = true;
+            VERIFY(piece_status->index_in_torrent == next_piece_index);
+        } else {
+            dbglnc("No more available peer to download piece {}", next_piece_index);
+            break;
+        }
+    }
+    return {};
+}
+
+ErrorOr<void> Comm::peer_has_piece(u64 piece_index, NonnullRefPtr<PeerContext> peer)
+{
+    auto& torrent = peer->torrent_context;
+    auto piece_status = torrent->missing_pieces.get(piece_index).value();
+    piece_status->havers.set(peer);
+
+    // A piece being downloaded won't be in the heap
+    if (!piece_status->currently_downloading) {
+        if (piece_status->index_in_heap.has_value()) {
+            // The piece is missing and other peers have it.
+            torrent->piece_heap.update(*piece_status);
+        } else {
+            // The piece is missing and this is the first peer we learn of that has it.
+            torrent->piece_heap.insert(*piece_status);
+        }
+    } else {
+        VERIFY(!piece_status->index_in_heap.has_value());
+    }
+
+    peer->interesting_pieces.set(piece_index);
+
+    return {};
+}
+
+void Comm::insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index)
+{
+    auto piece_status = torrent->missing_pieces.get(piece_index).value();
+    piece_status->currently_downloading = false;
+    torrent->piece_heap.insert(*piece_status);
+}
+
 ErrorOr<void> Comm::handle_bitfield(NonnullOwnPtr<BitTorrent::BitFieldMessage> bitfield, NonnullRefPtr<PeerContext> peer)
 {
     peer->bitfield = bitfield->bitfield;
@@ -198,17 +242,17 @@ ErrorOr<void> Comm::handle_bitfield(NonnullOwnPtr<BitTorrent::BitFieldMessage> b
             TRY(peer_has_piece(missing_piece, peer));
         }
     }
-    
+
     VERIFY(!peer->we_are_interested_in_peer);
-    
+
     if (interesting) {
         // TODO we need a (un)choking algo
         send_message(make<BitTorrent::Unchoke>(), peer);
         peer->we_are_choking_peer = false;
-        
+
         send_message(make<BitTorrent::Interested>(), peer);
         peer->we_are_interested_in_peer = true;
-        
+
         TRY(piece_or_peer_availability_updated(torrent));
     } else {
         if (get_available_peers_count(torrent) > 0) {
@@ -218,7 +262,7 @@ ErrorOr<void> Comm::handle_bitfield(NonnullOwnPtr<BitTorrent::BitFieldMessage> b
             dbglnc("Peer has no interesting pieces, but we have no other peers to connect to. Staying connected in the hope that it will get some interesting pieces.");
         }
     }
-    
+
     return {};
 }
 
@@ -252,13 +296,13 @@ ErrorOr<void> Comm::handle_have(NonnullOwnPtr<BitTorrent::Have> have_message, No
     auto piece_index = have_message->piece_index;
     dbglnc("Peer has piece {}, setting in peer bitfield, bitfield size: {}", piece_index, peer->bitfield.size());
     peer->bitfield.set(piece_index, true);
-    
+
     if (peer->torrent_context->missing_pieces.contains(piece_index)) {
         TRY(peer_has_piece(piece_index, peer));
         if (!peer->we_are_interested_in_peer) {
             send_message(make<BitTorrent::Unchoke>(), peer);
             peer->we_are_choking_peer = false;
-            
+
             send_message(make<BitTorrent::Interested>(), peer);
             peer->we_are_interested_in_peer = true;
         }
@@ -266,7 +310,7 @@ ErrorOr<void> Comm::handle_have(NonnullOwnPtr<BitTorrent::Have> have_message, No
     } else {
         dbglnc("Peer has piece {} but we already have it.", piece_index);
     }
-    
+
     return {};
 }
 
@@ -292,7 +336,15 @@ ErrorOr<void> Comm::handle_piece(NonnullOwnPtr<BitTorrent::Piece> piece_message,
     piece.data.overwrite(begin, piece_message->block.bytes().data(), block_size);
     piece.offset = begin + block_size;
     if (piece.offset == (size_t)piece.length) {
-        TRY(post_command(make<PieceDownloadedCommand>(index, piece.data.bytes(), peer)));
+        m_event_loop->deferred_invoke([this, index, peer, bytes = piece.data.bytes()]{
+            m_peer_context_stack.append(peer);
+            auto err = piece_downloaded(index, bytes, peer);
+            m_peer_context_stack.clear();
+            if (err.is_error()) {
+                dbgln("Failed to handle a downloaded piece: {}", err.error());
+                // TODO we should shutdown the app at this point and maybe just not use ErrorOr and release the values
+            }
+        });
         piece.index = {};
         peer->active = false;
     } else {
@@ -399,7 +451,7 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> peer)
             TRY(parse_input_message(message_byte_stream, peer));
             peer->incoming_message_length = 0;
         } else if (peer->input_message_buffer.used_space() >= 4) {
-            peer->input_message_buffer.read({&peer->incoming_message_length, sizeof(peer->incoming_message_length)});
+            peer->input_message_buffer.read({ &peer->incoming_message_length, sizeof(peer->incoming_message_length) });
             if (peer->incoming_message_length == 0) {
                 dbglnc("Received keep-alive");
                 peer->last_message_received_at = Core::DateTime::now();
@@ -569,17 +621,17 @@ void Comm::set_peer_errored(NonnullRefPtr<PeerContext> peer)
     peer->active = false;
     peer->connected = false;
     peer->errored = true;
-    
+
     peer->socket_writable_notifier->close();
     peer->socket->close();
 
     torrent->connected_peers.remove(peer);
-    
+
     peer->download_speed = 0;
     peer->upload_speed = 0;
     peer->bytes_downloaded_since_last_speed_measurement = 0;
     peer->bytes_uploaded_since_last_speed_measurement = 0;
-    
+
     connect_more_peers(torrent);
 }
 
@@ -591,82 +643,6 @@ u64 Comm::get_available_peers_count(NonnullRefPtr<TorrentContext> torrent) const
             count++;
     }
     return count;
-}
-
-ErrorOr<void> Comm::piece_or_peer_availability_updated(NonnullRefPtr<TorrentContext> torrent)
-{
-    size_t available_slots = 0;
-    for (auto const& peer : torrent->connected_peers)
-        available_slots += !peer->active;
-
-    dbglnc("We have {} inactive peers out of {} connected peers.", available_slots, torrent->connected_peers.size());
-    for (size_t i = 0; i < available_slots; i++) {
-        dbglnc("Trying to start a piece download on a {}th peer", i);
-        if (torrent->piece_heap.is_empty())
-            return {};
-
-        // TODO find out the rarest available piece, because the rarest piece might not be available right now.
-        auto next_piece_index = torrent->piece_heap.peek_min()->index_in_torrent;
-        dbglnc("Picked next piece for download {}", next_piece_index);
-        // TODO improve how we select the peer. Choking algo, bandwidth, etc
-        bool found_peer = false;
-        for (auto& haver : torrent->missing_pieces.get(next_piece_index).value()->havers) {
-            VERIFY(haver->connected);
-
-            dbglnc("Peer {} is choking us: {}, is active: {}", haver, haver->peer_is_choking_us, haver->active);
-            if (!haver->peer_is_choking_us && !haver->active) {
-                m_peer_context_stack.append(haver);
-                dbglnc("Requesting piece {} from peer {}", next_piece_index, haver);
-                haver->active = true;
-                u32 block_length = min(BlockLength, torrent->piece_length(next_piece_index));
-                send_message(make<BitTorrent::Request>(next_piece_index, 0, block_length), *haver);
-                m_peer_context_stack.remove(m_peer_context_stack.size() - 1);
-                found_peer = true;
-                break;
-            }
-        }
-        if (found_peer) {
-            dbglnc("Found peer for piece {}, popping the piece from the heap", next_piece_index);
-            auto piece_status = torrent->piece_heap.pop_min();
-            piece_status->currently_downloading = true;
-            VERIFY(piece_status->index_in_torrent == next_piece_index);
-        } else {
-            dbglnc("No more available peer to download piece {}", next_piece_index);
-            break;
-        }
-    }
-    return {};
-}
-
-ErrorOr<void> Comm::peer_has_piece(u64 piece_index, NonnullRefPtr<PeerContext> peer)
-{
-    auto& torrent = peer->torrent_context;
-    auto piece_status = torrent->missing_pieces.get(piece_index).value();
-    piece_status->havers.set(peer);
-
-    // A piece being downloaded won't be in the heap
-    if (!piece_status->currently_downloading) {
-        if (piece_status->index_in_heap.has_value()) {
-            // The piece is missing and other peers have it.
-            torrent->piece_heap.update(*piece_status);
-        } else {
-            // The piece is missing and this is the first peer we learn of that has it.
-            torrent->piece_heap.insert(*piece_status);
-        }
-    } else {
-        VERIFY(!piece_status->index_in_heap.has_value());
-    }
-
-    peer->interesting_pieces.set(piece_index);
-    
-    return {};
-}
-
-void Comm::insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index)
-{
-    auto piece_status = torrent->missing_pieces.get(piece_index).value();
-    piece_status->currently_downloading = false;
-    torrent->piece_heap.insert(*piece_status);
 }
 
 }

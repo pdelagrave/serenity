@@ -149,12 +149,6 @@ void Engine::start_torrent(int torrent_id)
             origin_event_loop->deferred_invoke([this, torrent, info_hash, local_bitfield = move(local_bitfield)] {
                 dbgln("we have {}/{} pieces", local_bitfield.ones(), torrent->piece_count());
 
-                // info_hash (RO), can be copied
-                // NonnullRefPtr<BitField>, local_bitfield shared between Comm/TorrentContext and Engine/Torrent. Can only be written to by one of them at a time. Engine write only at full check time, during which Comm is stopped for that torrent. Comm only writes to it when that torrent is active.
-                // local_peer_id (RO), can be copied. Generated when the torrent is added to the engine. Should be different per torrent and per sessions. Only the same for one torrent during the time it exists in the Bits torrent list for one process run.
-                // local_port, ro, can be copied. From Bits config, set in the torrent at creation time.
-                // data_file_map, OwnPtr, shared between Engine and Comm, only one of them has it at a time. Engine has it by default unless Comm is using it.
-
                 auto tcontext = make_ref_counted<Data::TorrentContext>(info_hash,
                     torrent->local_peer_id(),
                     (u64)torrent->meta_info().total_length(),
@@ -162,13 +156,12 @@ void Engine::start_torrent(int torrent_id)
                     torrent->local_port(),
                     local_bitfield,
                     torrent->data_file_map());
-                auto c = make<Data::ActivateTorrentCommand>(tcontext);
-                comm.activate_torrent(move(c)).release_value_but_fixme_should_propagate_errors();
+                comm.activate_torrent(move(tcontext));
 
                 announce(torrent, [this, torrent, info_hash](auto peers) {
                     // announce finished callback, now on the UI loop/thread
                     // TODO: if we seed, we don't add peers.
-                    comm.add_peers({ info_hash, move(peers) }).release_value_but_fixme_should_propagate_errors();
+                    comm.add_peers(info_hash, move(peers));
                 }).release_value_but_fixme_should_propagate_errors();
             });
         });
@@ -178,8 +171,7 @@ void Engine::start_torrent(int torrent_id)
 void Engine::stop_torrent(int torrent_id)
 {
     dbgln("stop_torrent({})", torrent_id);
-    // todo: support stopping the torrent transfer and also stopping the checking if that's the current state.
-    TODO();
+    comm.deactivate_torrent(m_torrents.at(torrent_id)->meta_info().info_hash());
 }
 
 void Engine::cancel_checking(int torrent_id)
