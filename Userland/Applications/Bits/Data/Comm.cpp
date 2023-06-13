@@ -68,6 +68,7 @@ void Comm::custom_event(Core::CustomEvent& event)
     }();
     if (err.is_error())
         dbgln("Error handling event: {}", err.error());
+    m_peer_context_stack.clear();
 }
 
 void Comm::timer_event(Core::TimerEvent&)
@@ -151,8 +152,11 @@ ErrorOr<void> Comm::handle_command_piece_downloaded(PieceDownloadedCommand const
 
         dbglnc("We completed piece {}", index);
 
-        for (auto const& connected_peer : torrent->connected_peers)
+        for (auto const& connected_peer : torrent->connected_peers) {
+            m_peer_context_stack.append(connected_peer);
             send_message(make<BitTorrent::Have>(index), connected_peer);
+            m_peer_context_stack.remove(m_peer_context_stack.size() - 1);
+        }
 
     } else {
         insert_piece_in_heap(torrent, index);
@@ -242,7 +246,6 @@ ErrorOr<void> Comm::handle_piece(NonnullOwnPtr<BitTorrent::Piece> piece_message,
             TRY(piece_or_peer_availability_updated(torrent));
         } else {
             auto next_block_length = min((size_t)BlockLength, (size_t)piece.length - piece.offset);
-            // dbglnc(context, "Sending next request for piece {} at offset {}/{} blocklen: {}", index, piece.offset, piece.length, next_block_length);
             send_message(make<BitTorrent::Request>(index, piece.offset, next_block_length), peer);
         }
     }
@@ -304,21 +307,15 @@ ErrorOr<void> Comm::parse_input_message(SeekableStream& stream, NonnullRefPtr<Pe
 ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> peer)
 {
     auto& socket = peer->socket;
-    // dbglnc(context, "Reading from socket");
-
-    // hack:
-    if (TRY(socket->pending_bytes()) == 0) {
-        dbglnc("Socket has no pending bytes, reading and writing to it to force receiving an RST");
-        // remote host probably closed the connection, reading from the socket to force receiving an RST and having the connection being fully closed on our side.
-        //        TRY(socket->read_some(ByteBuffer::create_uninitialized(1).release_value().bytes()));
-        //        TRY(socket->write_value(BigEndian<u32>(0)));
-        peer->socket_writable_notifier->close();
-        socket->close();
-        return {};
-    }
+    dbglnc("Socket pending bytes:{} iseof:{}", TRY(socket->pending_bytes()), socket->is_eof());
 
     for (;;) {
         auto nread_or_error = peer->input_message_buffer.fill_from_stream(*socket);
+        if (socket->is_eof()) {
+            dbglnc("Peer disconnected");
+            set_peer_errored(peer);
+            return {};
+        }
         if (nread_or_error.is_error()) {
             auto code = nread_or_error.error().code();
             if (code == EINTR) {
@@ -354,14 +351,15 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> peer)
 
 void Comm::send_message(NonnullOwnPtr<BitTorrent::Message> message, NonnullRefPtr<PeerContext> peer)
 {
-    dbglnc("Sending message: {}", *message);
-    size_t size_to_send = message->size() + sizeof(u32); // message size + message payload
-    if (peer->output_message_buffer.empty_space() < size_to_send) {
+    auto size = BigEndian<u32>(message->size());
+    dbglnc("Sending message [{}b] {}", size, *message);
+    size_t total_size = message->size() + sizeof(u32); // message size + message payload
+    if (peer->output_message_buffer.empty_space() < total_size) {
         // TODO: keep a non-serialized message queue?
         dbglnc("Outgoing message buffer is full, dropping message");
         return;
     }
-    auto size = BigEndian<u32>(message->size());
+
     peer->output_message_buffer.write({ &size, sizeof(u32) });
     peer->output_message_buffer.write(message->serialized);
     flush_output_buffer(peer);
@@ -439,17 +437,23 @@ ErrorOr<void> Comm::connect_to_peer(NonnullRefPtr<PeerContext> peer)
     peer->socket = move(socket);
 
     peer->socket_writable_notifier->on_activation = [&, socket_fd, peer] {
+        m_peer_context_stack.append(peer);
+
+        // We were already connected and we can write again:
         if (peer->connected) {
             flush_output_buffer(peer);
+            m_peer_context_stack.clear();
             return;
         }
 
+        // We were trying to connect and we can now figure out if it succeeded or not:
         int so_error;
         socklen_t len = sizeof(so_error);
         auto ret = getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
         if (ret == -1) {
             auto errn = errno;
             dbglnc("error calling getsockopt: errno:{} {}", errn, strerror(errn));
+            m_peer_context_stack.clear();
             return;
         }
         // dbglnc(context, "getsockopt SO_ERROR resut: '{}' ({}) for peer {}", strerror(so_error), so_error, address.to_deprecated_string());
@@ -471,7 +475,6 @@ ErrorOr<void> Comm::connect_to_peer(NonnullRefPtr<PeerContext> peer)
             auto handshake = BitTorrent::Handshake(peer->torrent_context->info_hash, peer->torrent_context->local_peer_id);
             peer->output_message_buffer.write({ &handshake, sizeof(handshake) });
             flush_output_buffer(peer);
-            return;
         } else {
             // Would be nice to have GNU extension strerrorname_np() so we can print ECONNREFUSED,... too.
             dbglnc("Error connecting: {}", strerror(so_error));
@@ -479,6 +482,7 @@ ErrorOr<void> Comm::connect_to_peer(NonnullRefPtr<PeerContext> peer)
             peer->socket->close();
             peer->errored = true;
         }
+        m_peer_context_stack.clear();
     };
     return {};
 }

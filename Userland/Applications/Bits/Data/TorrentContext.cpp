@@ -21,4 +21,12 @@ TorrentContext::TorrentContext(ReadonlyBytes info_hash, ReadonlyBytes local_peer
 {
 }
 
+u64 TorrentContext::piece_length(u64 piece_index) const
+{
+    if (piece_index == piece_count - 1 && total_length % nominal_piece_length > 0)
+        return total_length % nominal_piece_length;
+    else
+        return nominal_piece_length;
+}
+
 }

@@ -30,7 +30,10 @@ public:
         Piece = 0x07,
         Cancel = 0x08
     };
+    virtual ~Message() = default;
+
     static DeprecatedString to_string(Type);
+    virtual DeprecatedString to_string() const;
 
     u32 size() const { return serialized.size(); }
 
@@ -105,6 +108,7 @@ public:
     {
     }
     const BitField bitfield;
+    DeprecatedString to_string() const override;
 };
 
 class Choke : public Message {
@@ -158,6 +162,7 @@ public:
     }
 
     BigEndian<u32> piece_index;
+    DeprecatedString to_string() const override;
 };
 
 class Interested : public Message {
@@ -189,6 +194,7 @@ public:
     BigEndian<u32> const piece_index;
     BigEndian<u32> const begin_offset;
     const ByteBuffer block;
+    DeprecatedString to_string() const override;
 };
 
 class Request : public Message {
@@ -203,6 +209,7 @@ public:
     BigEndian<u32> const piece_index;
     BigEndian<u32> const piece_offset;
     BigEndian<u32> const block_length;
+    DeprecatedString to_string() const override;
 };
 
 class Unchoke : public Message {
@@ -219,6 +226,6 @@ template<>
 struct AK::Formatter<Bits::BitTorrent::Message> : AK::Formatter<StringView> {
     ErrorOr<void> format(FormatBuilder& builder, Bits::BitTorrent::Message const& value)
     {
-        return Formatter<StringView>::format(builder, DeprecatedString::formatted("{} size: {}", Bits::BitTorrent::Message::to_string(value.type), value.size()));
+        return Formatter<StringView>::format(builder, value.to_string());
     }
 };
