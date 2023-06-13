@@ -58,7 +58,7 @@ private:
     void flush_output_buffer(NonnullRefPtr<PeerContext> peer);
     void connect_more_peers(NonnullRefPtr<TorrentContext>);
     ErrorOr<void> connect_to_peer(NonnullRefPtr<PeerContext> pcontext);
-    void set_peer_errored(NonnullRefPtr<PeerContext> pcontext);
+    void set_peer_errored(NonnullRefPtr<PeerContext> peer, bool should_connect_more_peers = true);
     u64 get_available_peers_count(NonnullRefPtr<TorrentContext> torrent) const;
 
     // dbgln with Context

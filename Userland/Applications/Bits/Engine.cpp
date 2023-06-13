@@ -155,7 +155,7 @@ void Engine::start_torrent(int torrent_id)
                     (u64)torrent->meta_info().piece_length(),
                     torrent->local_port(),
                     local_bitfield,
-                    torrent->data_file_map());
+                    torrent->data_file_map().release_nonnull());
                 comm.activate_torrent(move(tcontext));
 
                 announce(torrent, [this, torrent, info_hash](auto peers) {

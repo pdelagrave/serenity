@@ -37,7 +37,7 @@ public:
     NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> const& local_files() const { return m_local_files; }
     u16 local_port() const { return m_local_port; }
     DeprecatedString const& display_name() const { return m_display_name; }
-    NonnullOwnPtr<TorrentDataFileMap> data_file_map() { return move(m_data_file_map); }
+    OwnPtr<TorrentDataFileMap> data_file_map() { return move(m_data_file_map); }
     float check_progress() const { return (float) m_piece_verified * 100 / (float) m_piece_count; }
     DeprecatedString data_path() { return m_data_path;}
 
@@ -53,7 +53,7 @@ private:
     u16 m_local_port { 27007 };
     NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> m_local_files;
     DeprecatedString m_display_name;
-    NonnullOwnPtr<TorrentDataFileMap> m_data_file_map;
+    OwnPtr<TorrentDataFileMap> m_data_file_map;
     RefPtr<Threading::BackgroundAction<BitField>> m_background_checker;
     u64 m_piece_verified = 0;
     TorrentState m_state;

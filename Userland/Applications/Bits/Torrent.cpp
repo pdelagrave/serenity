@@ -56,7 +56,7 @@ void Torrent::checking_in_background(bool skip, bool assume_valid, Function<void
                 m_piece_verified++;
                 if (task.is_canceled())
                     return Error::from_errno(ECANCELED);
-                bool is_present = skip ? assume_valid : TRY(data_file_map()->check_piece(i, i == piece_count() - 1));
+                bool is_present = skip ? assume_valid : TRY(m_data_file_map->check_piece(i, i == piece_count() - 1));
                 local_bitfield.set(i, is_present);
             }
             return local_bitfield;

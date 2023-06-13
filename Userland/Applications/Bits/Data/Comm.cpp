@@ -49,10 +49,16 @@ void Comm::activate_torrent(NonnullRefPtr<TorrentContext> torrent)
     });
 }
 
-void Comm::deactivate_torrent(ReadonlyBytes)
+void Comm::deactivate_torrent(ReadonlyBytes info_hash)
 {
-    m_event_loop->deferred_invoke([] {
-        dbgln("deactivate torrent");
+    m_event_loop->deferred_invoke([this, info_hash] {
+        // TODO make sure add_peers can't and won't be called during deactivation
+        auto torrent = m_torrent_contexts.get(info_hash).value();
+        for (auto const& peer : torrent->all_peers) {
+            if (peer->connected)
+                set_peer_errored(peer, false);
+        }
+        m_torrent_contexts.remove(info_hash);
     });
 }
 
@@ -145,6 +151,19 @@ ErrorOr<void> Comm::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPt
             m_peer_context_stack.remove(m_peer_context_stack.size() - 1);
         }
 
+        if (torrent->local_bitfield.progress() == 100) {
+            dbglnc("Torrent fully downloaded.");
+            VERIFY(torrent->piece_heap.is_empty());
+            VERIFY(torrent->missing_pieces.is_empty());
+
+            for (auto const& connected_peer : torrent->connected_peers) {
+                if (connected_peer->bitfield.progress() == 100)
+                    set_peer_errored(connected_peer, false);
+            }
+            // TODO: Have the engine monitor for status and do the deactivation
+            // deactivate_torrent(torrent->info_hash);
+            return {};
+        }
     } else {
         insert_piece_in_heap(torrent, index);
         dbglnc("Piece {} failed hash check", index);
@@ -605,7 +624,8 @@ ErrorOr<void> Comm::connect_to_peer(NonnullRefPtr<PeerContext> peer)
     return {};
 }
 
-void Comm::set_peer_errored(NonnullRefPtr<PeerContext> peer)
+// TODO: rename to disconnect_peer(peer, error_flags) ?
+void Comm::set_peer_errored(NonnullRefPtr<PeerContext> peer, bool should_connect_more_peers)
 {
     auto torrent = peer->torrent_context;
     for (auto const& piece_index : peer->interesting_pieces) {
@@ -632,7 +652,8 @@ void Comm::set_peer_errored(NonnullRefPtr<PeerContext> peer)
     peer->bytes_downloaded_since_last_speed_measurement = 0;
     peer->bytes_uploaded_since_last_speed_measurement = 0;
 
-    connect_more_peers(torrent);
+    if (should_connect_more_peers)
+        connect_more_peers(torrent);
 }
 
 u64 Comm::get_available_peers_count(NonnullRefPtr<TorrentContext> torrent) const
