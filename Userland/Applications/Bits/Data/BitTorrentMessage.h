@@ -70,6 +70,13 @@ protected:
     {
     }
 
+    // Null message used only for keepalives
+    Message()
+        : serialized(ByteBuffer::create_uninitialized(0).release_value_but_fixme_should_propagate_errors())
+        , type(Type::Choke) // Bogus value. Should never be used
+    {
+    }
+
 private:
     // TODO: make this variadic template argument optional so we don't have to use StreamWritable({}) for messages with no payload
     template<typename... Payload>
@@ -171,6 +178,9 @@ public:
         : Message(Type::Interested, StreamWritable({}))
     {
     }
+};
+
+class KeepAlive : public Message {
 };
 
 class NotInterested : public Message {

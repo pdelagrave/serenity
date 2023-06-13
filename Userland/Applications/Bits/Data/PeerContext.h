@@ -8,6 +8,7 @@
 
 #include "BitTorrentMessage.h"
 #include <AK/RefCounted.h>
+#include <LibCore/DateTime.h>
 #include <LibCore/Socket.h>
 
 namespace Bits::Data {
@@ -52,6 +53,9 @@ struct PeerContext : public RefCounted<PeerContext> {
 
     u64 bytes_uploaded_since_last_speed_measurement { 0 };
     u64 upload_speed { 0 };
+
+    Core::DateTime last_message_received_at;
+    Core::DateTime last_message_sent_at;
 
     CircularBuffer output_message_buffer;
     RefPtr<Core::Notifier> socket_writable_notifier {};

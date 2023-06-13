@@ -63,10 +63,11 @@ private:
     void connect_more_peers(NonnullRefPtr<TorrentContext>);
     ErrorOr<void> connect_to_peer(NonnullRefPtr<PeerContext> pcontext);
     void set_peer_errored(NonnullRefPtr<PeerContext> pcontext);
+    u64 get_available_peers_count(NonnullRefPtr<TorrentContext> torrent) const;
 
     // BT higher level logic
     ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<TorrentContext> torrent);
-    ErrorOr<bool> update_piece_availability(u64 piece_index, NonnullRefPtr<PeerContext> pcontext);
+    ErrorOr<void> peer_has_piece(u64 piece_index, NonnullRefPtr<PeerContext> peer);
     void insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index);
 
     // dbgln with Context

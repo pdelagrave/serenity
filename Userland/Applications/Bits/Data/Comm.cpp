@@ -73,6 +73,7 @@ void Comm::custom_event(Core::CustomEvent& event)
 
 void Comm::timer_event(Core::TimerEvent&)
 {
+    // Transfer speed measurement
     timeval current_time;
     timeval time_diff;
     gettimeofday(&current_time, nullptr);
@@ -94,6 +95,24 @@ void Comm::timer_event(Core::TimerEvent&)
         torrent.value->download_speed = download_speed;
     }
     m_last_speed_measurement = current_time;
+
+    // Peers keepalive
+    auto keepalive_timeout = Duration::from_seconds(120);
+    auto now = Core::DateTime::now();
+    for (auto const& torrent : m_torrent_contexts) {
+        for (auto const& peer : torrent.value->connected_peers) {
+            if (now.timestamp() - peer->last_message_received_at.timestamp() > keepalive_timeout.to_milliseconds() + 10000) {
+                dbgln("Peer timed out");
+                set_peer_errored(peer);
+                continue;
+            }
+
+            if (now.timestamp() - peer->last_message_sent_at.timestamp() > keepalive_timeout.to_milliseconds() - 10000) {
+                dbgln("Sending keepalive");
+                send_message(make<BitTorrent::KeepAlive>(), *peer);
+            }
+        }
+    }
 }
 
 ErrorOr<void> Comm::post_command(NonnullOwnPtr<Command> command)
@@ -171,10 +190,35 @@ ErrorOr<void> Comm::handle_bitfield(NonnullOwnPtr<BitTorrent::BitFieldMessage> b
     peer->bitfield = bitfield->bitfield;
     dbglnc("Set bitfield for peer. size: {} data_size: {}", peer->bitfield.size(), peer->bitfield.data_size());
 
-    for (auto& missing_piece : peer->torrent_context->missing_pieces.keys()) {
-        if (peer->bitfield.get(missing_piece))
-            TRY(update_piece_availability(missing_piece, peer));
+    bool interesting = false;
+    auto torrent = peer->torrent_context;
+    for (auto& missing_piece : torrent->missing_pieces.keys()) {
+        if (peer->bitfield.get(missing_piece)) {
+            interesting = true;
+            TRY(peer_has_piece(missing_piece, peer));
+        }
     }
+    
+    VERIFY(!peer->we_are_interested_in_peer);
+    
+    if (interesting) {
+        // TODO we need a (un)choking algo
+        send_message(make<BitTorrent::Unchoke>(), peer);
+        peer->we_are_choking_peer = false;
+        
+        send_message(make<BitTorrent::Interested>(), peer);
+        peer->we_are_interested_in_peer = true;
+        
+        TRY(piece_or_peer_availability_updated(torrent));
+    } else {
+        if (get_available_peers_count(torrent) > 0) {
+            dbglnc("Peer has no interesting pieces, disconnecting");
+            set_peer_errored(peer); // TODO: set error type so we can connect to it again later if we need to
+        } else {
+            dbglnc("Peer has no interesting pieces, but we have no other peers to connect to. Staying connected in the hope that it will get some interesting pieces.");
+        }
+    }
+    
     return {};
 }
 
@@ -208,7 +252,21 @@ ErrorOr<void> Comm::handle_have(NonnullOwnPtr<BitTorrent::Have> have_message, No
     auto piece_index = have_message->piece_index;
     dbglnc("Peer has piece {}, setting in peer bitfield, bitfield size: {}", piece_index, peer->bitfield.size());
     peer->bitfield.set(piece_index, true);
-    TRY(update_piece_availability(piece_index, peer));
+    
+    if (peer->torrent_context->missing_pieces.contains(piece_index)) {
+        TRY(peer_has_piece(piece_index, peer));
+        if (!peer->we_are_interested_in_peer) {
+            send_message(make<BitTorrent::Unchoke>(), peer);
+            peer->we_are_choking_peer = false;
+            
+            send_message(make<BitTorrent::Interested>(), peer);
+            peer->we_are_interested_in_peer = true;
+        }
+        TRY(piece_or_peer_availability_updated(peer->torrent_context));
+    } else {
+        dbglnc("Peer has piece {} but we already have it.", piece_index);
+    }
+    
     return {};
 }
 
@@ -263,8 +321,12 @@ ErrorOr<void> Comm::parse_input_message(SeekableStream& stream, NonnullRefPtr<Pe
 
     using MessageType = Bits::BitTorrent::Message::Type;
     auto message_type = TRY(stream.read_value<MessageType>());
-    dbglnc("Got message type {}", Bits::BitTorrent::Message::to_string(message_type));
     TRY(stream.seek(0, AK::SeekMode::SetPosition));
+
+    dbglnc("Got message type {}", Bits::BitTorrent::Message::to_string(message_type));
+
+    peer->last_message_received_at = Core::DateTime::now();
+
     peer->incoming_message_length = 0;
 
     switch (message_type) {
@@ -307,7 +369,6 @@ ErrorOr<void> Comm::parse_input_message(SeekableStream& stream, NonnullRefPtr<Pe
 ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> peer)
 {
     auto& socket = peer->socket;
-    dbglnc("Socket pending bytes:{} iseof:{}", TRY(socket->pending_bytes()), socket->is_eof());
 
     for (;;) {
         auto nread_or_error = peer->input_message_buffer.fill_from_stream(*socket);
@@ -339,8 +400,10 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> peer)
             peer->incoming_message_length = 0;
         } else if (peer->input_message_buffer.used_space() >= 4) {
             peer->input_message_buffer.read({&peer->incoming_message_length, sizeof(peer->incoming_message_length)});
-            if (peer->incoming_message_length == 0)
+            if (peer->incoming_message_length == 0) {
                 dbglnc("Received keep-alive");
+                peer->last_message_received_at = Core::DateTime::now();
+            }
         } else {
             // Not enough bytes to read the length of the next message
             return {};
@@ -363,6 +426,9 @@ void Comm::send_message(NonnullOwnPtr<BitTorrent::Message> message, NonnullRefPt
     peer->output_message_buffer.write({ &size, sizeof(u32) });
     peer->output_message_buffer.write(message->serialized);
     flush_output_buffer(peer);
+
+    peer->last_message_sent_at = Core::DateTime::now();
+
     return;
 }
 
@@ -517,6 +583,16 @@ void Comm::set_peer_errored(NonnullRefPtr<PeerContext> peer)
     connect_more_peers(torrent);
 }
 
+u64 Comm::get_available_peers_count(NonnullRefPtr<TorrentContext> torrent) const
+{
+    u64 count = 0;
+    for (auto const& peer : torrent->all_peers) {
+        if (!peer->connected && !peer->errored)
+            count++;
+    }
+    return count;
+}
+
 ErrorOr<void> Comm::piece_or_peer_availability_updated(NonnullRefPtr<TorrentContext> torrent)
 {
     size_t available_slots = 0;
@@ -562,38 +638,28 @@ ErrorOr<void> Comm::piece_or_peer_availability_updated(NonnullRefPtr<TorrentCont
     return {};
 }
 
-ErrorOr<bool> Comm::update_piece_availability(u64 piece_index, NonnullRefPtr<PeerContext> peer)
+ErrorOr<void> Comm::peer_has_piece(u64 piece_index, NonnullRefPtr<PeerContext> peer)
 {
     auto& torrent = peer->torrent_context;
-    auto is_missing = torrent->missing_pieces.get(piece_index);
-    if (!is_missing.has_value()) {
-        dbglnc("Peer has piece {} but we already have it.", piece_index);
-        return false;
-    }
-
-    auto& piece_status = is_missing.value();
+    auto piece_status = torrent->missing_pieces.get(piece_index).value();
     piece_status->havers.set(peer);
+
+    // A piece being downloaded won't be in the heap
     if (!piece_status->currently_downloading) {
         if (piece_status->index_in_heap.has_value()) {
+            // The piece is missing and other peers have it.
             torrent->piece_heap.update(*piece_status);
         } else {
+            // The piece is missing and this is the first peer we learn of that has it.
             torrent->piece_heap.insert(*piece_status);
         }
+    } else {
+        VERIFY(!piece_status->index_in_heap.has_value());
     }
 
     peer->interesting_pieces.set(piece_index);
-
-    if (!peer->we_are_interested_in_peer) {
-        // TODO: figure out when is the best time to unchoke the peer.
-        send_message(make<BitTorrent::Unchoke>(), peer);
-        peer->we_are_choking_peer = false;
-
-        send_message(make<BitTorrent::Interested>(), peer);
-        peer->we_are_interested_in_peer = true;
-
-        TRY(piece_or_peer_availability_updated(torrent));
-    }
-    return true;
+    
+    return {};
 }
 
 void Comm::insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index)
