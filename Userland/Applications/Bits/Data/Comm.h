@@ -25,7 +25,10 @@ public:
     Vector<NonnullRefPtr<Data::TorrentContext>> get_torrent_contexts();
 
     const u16 max_total_connections = 100;
-    const u16 max_total_connections_per_torrent = 10;
+    const u16 max_connections_per_torrent = 10;
+    // An upload slot is when a peer is connected to us, they are intested in us, we aren't interested in them.
+    const u16 max_total_upload_slots = 50;
+    const u16 max_upload_slots_per_torrent = 5;
 
 protected:
     void timer_event(Core::TimerEvent&) override;
@@ -46,11 +49,11 @@ private:
     void insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index);
 
     // Comm BT message handlers
+    ErrorOr<void> parse_input_message(SeekableStream& stream, NonnullRefPtr<PeerContext> peer);
     ErrorOr<void> handle_bitfield(NonnullOwnPtr<BitTorrent::BitFieldMessage>, NonnullRefPtr<PeerContext>);
     ErrorOr<void> handle_handshake(NonnullOwnPtr<BitTorrent::Handshake> handshake, NonnullRefPtr<PeerContext> pcontext);
     ErrorOr<void> handle_have(NonnullOwnPtr<BitTorrent::Have> have_message, NonnullRefPtr<PeerContext> pcontext);
     ErrorOr<void> handle_piece(NonnullOwnPtr<BitTorrent::Piece>, NonnullRefPtr<PeerContext> pcontext);
-    ErrorOr<void> parse_input_message(SeekableStream& stream, NonnullRefPtr<PeerContext> peer);
 
     // Comm BT low level network functions
     ErrorOr<void> read_from_socket(NonnullRefPtr<PeerContext> pcontext);

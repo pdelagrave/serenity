@@ -248,6 +248,62 @@ void Comm::insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece
     torrent->piece_heap.insert(*piece_status);
 }
 
+ErrorOr<void> Comm::parse_input_message(SeekableStream& stream, NonnullRefPtr<PeerContext> peer)
+{
+    if (!peer->got_handshake) {
+        dbglnc("No handshake yet, trying to read and parse it");
+        TRY(handle_handshake(TRY(BitTorrent::Handshake::try_create(stream)), peer));
+        send_message(make<BitTorrent::BitFieldMessage>(BitField(peer->torrent_context->local_bitfield)), peer);
+        return {};
+    }
+
+    using MessageType = Bits::BitTorrent::Message::Type;
+    auto message_type = TRY(stream.read_value<MessageType>());
+    TRY(stream.seek(0, AK::SeekMode::SetPosition));
+
+    dbglnc("Got message type {}", Bits::BitTorrent::Message::to_string(message_type));
+
+    peer->last_message_received_at = Core::DateTime::now();
+
+    peer->incoming_message_length = 0;
+
+    switch (message_type) {
+    case MessageType::Choke:
+        peer->peer_is_choking_us = true;
+        TRY(piece_or_peer_availability_updated(peer->torrent_context));
+        break;
+    case MessageType::Unchoke:
+        peer->peer_is_choking_us = false;
+        TRY(piece_or_peer_availability_updated(peer->torrent_context));
+        break;
+    case MessageType::Interested:
+        peer->peer_is_interested_in_us = true;
+        break;
+    case MessageType::NotInterested:
+        peer->peer_is_interested_in_us = false;
+        break;
+    case MessageType::Have:
+        TRY(handle_have(make<BitTorrent::Have>(stream), peer));
+        break;
+    case MessageType::Bitfield:
+        TRY(handle_bitfield(make<BitTorrent::BitFieldMessage>(stream), peer));
+        break;
+    case MessageType::Request:
+        dbglnc("ERROR: Message type Request is unsupported");
+        break;
+    case MessageType::Piece:
+        TRY(handle_piece(make<BitTorrent::Piece>(stream), peer));
+        break;
+    case MessageType::Cancel:
+        dbglnc("ERROR: message type Cancel is unsupported");
+        break;
+    default:
+        dbglnc("ERROR: Got unsupported message type: {:02X}: {}", (u8)message_type, BitTorrent::Message::to_string(message_type));
+        break;
+    }
+    return {};
+}
+
 ErrorOr<void> Comm::handle_bitfield(NonnullOwnPtr<BitTorrent::BitFieldMessage> bitfield, NonnullRefPtr<PeerContext> peer)
 {
     peer->bitfield = bitfield->bitfield;
@@ -381,62 +437,6 @@ ErrorOr<void> Comm::handle_piece(NonnullOwnPtr<BitTorrent::Piece> piece_message,
     return {};
 }
 
-ErrorOr<void> Comm::parse_input_message(SeekableStream& stream, NonnullRefPtr<PeerContext> peer)
-{
-    if (!peer->got_handshake) {
-        dbglnc("No handshake yet, trying to read and parse it");
-        TRY(handle_handshake(TRY(BitTorrent::Handshake::try_create(stream)), peer));
-        send_message(make<BitTorrent::BitFieldMessage>(BitField(peer->torrent_context->local_bitfield)), peer);
-        return {};
-    }
-
-    using MessageType = Bits::BitTorrent::Message::Type;
-    auto message_type = TRY(stream.read_value<MessageType>());
-    TRY(stream.seek(0, AK::SeekMode::SetPosition));
-
-    dbglnc("Got message type {}", Bits::BitTorrent::Message::to_string(message_type));
-
-    peer->last_message_received_at = Core::DateTime::now();
-
-    peer->incoming_message_length = 0;
-
-    switch (message_type) {
-    case MessageType::Choke:
-        peer->peer_is_choking_us = true;
-        TRY(piece_or_peer_availability_updated(peer->torrent_context));
-        break;
-    case MessageType::Unchoke:
-        peer->peer_is_choking_us = false;
-        TRY(piece_or_peer_availability_updated(peer->torrent_context));
-        break;
-    case MessageType::Interested:
-        peer->peer_is_interested_in_us = true;
-        break;
-    case MessageType::NotInterested:
-        peer->peer_is_interested_in_us = false;
-        break;
-    case MessageType::Have:
-        TRY(handle_have(make<BitTorrent::Have>(stream), peer));
-        break;
-    case MessageType::Bitfield:
-        TRY(handle_bitfield(make<BitTorrent::BitFieldMessage>(stream), peer));
-        break;
-    case MessageType::Request:
-        dbglnc("ERROR: Message type Request is unsupported");
-        break;
-    case MessageType::Piece:
-        TRY(handle_piece(make<BitTorrent::Piece>(stream), peer));
-        break;
-    case MessageType::Cancel:
-        dbglnc("ERROR: message type Cancel is unsupported");
-        break;
-    default:
-        dbglnc("ERROR: Got unsupported message type: {:02X}: {}", (u8)message_type, BitTorrent::Message::to_string(message_type));
-        break;
-    }
-    return {};
-}
-
 ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerContext> peer)
 {
     auto& socket = peer->socket;
@@ -537,7 +537,7 @@ void Comm::connect_more_peers(NonnullRefPtr<TorrentContext> torrent)
     for (auto const& c : m_torrent_contexts) {
         total_connections += c.value->connected_peers.size();
     }
-    size_t available_slots = min(max_total_connections_per_torrent - torrent->connected_peers.size(), max_total_connections - total_connections);
+    size_t available_slots = min(max_connections_per_torrent - torrent->connected_peers.size(), max_total_connections - total_connections);
     dbglnc("We have {} available slots for new connections", available_slots);
 
     auto vector = torrent->all_peers.values();
