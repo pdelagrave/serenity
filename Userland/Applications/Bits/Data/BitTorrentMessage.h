@@ -37,7 +37,7 @@ public:
 
     u32 size() const { return serialized.size(); }
 
-    const ByteBuffer serialized;
+    ByteBuffer serialized;
     const Type type;
 
 protected:
@@ -152,6 +152,8 @@ struct Handshake {
         TRY(stream.read_until_filled(Bytes { handshake, sizeof(Handshake) }));
         return adopt_nonnull_own_or_enomem(handshake);
     }
+
+    DeprecatedString to_string() const;
 };
 
 class Have : public Message {
@@ -193,6 +195,15 @@ public:
 
 class Piece : public Message {
 public:
+    Piece(BigEndian<u32> piece_index, BigEndian<u32> begin_offset, ByteBuffer block)
+        : Message(Type::Piece, piece_index, begin_offset)
+        , piece_index(piece_index)
+        , begin_offset(begin_offset)
+        , block(block)
+    {
+        serialized.append(block);
+    }
+
     Piece(SeekableStream& stream)
         : Message(stream)
         , piece_index(stream.read_value<BigEndian<u32>>().release_value_but_fixme_should_propagate_errors())
@@ -216,6 +227,15 @@ public:
         , block_length(block_length)
     {
     }
+
+    Request(SeekableStream& stream)
+        : Message(stream)
+        , piece_index(stream.read_value<BigEndian<u32>>().release_value_but_fixme_should_propagate_errors())
+        , piece_offset(stream.read_value<BigEndian<u32>>().release_value_but_fixme_should_propagate_errors())
+        , block_length(stream.read_value<BigEndian<u32>>().release_value_but_fixme_should_propagate_errors())
+    {
+    }
+
     BigEndian<u32> const piece_index;
     BigEndian<u32> const piece_offset;
     BigEndian<u32> const block_length;

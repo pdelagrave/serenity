@@ -161,6 +161,15 @@ TorrentDataFileMap::TorrentDataFileMap(ByteBuffer piece_hashes, i64 piece_length
 {
 }
 
+ErrorOr<void> TorrentDataFileMap::read_piece(u32 index, Bytes buffer)
+{
+    if (buffer.size() > m_piece_length)
+        return Error::from_string_view_or_print_error_and_return_errno("Invalid buffer size"sv, EINVAL);
+    TRY(m_files_mapper->seek(index * m_piece_length, SeekMode::SetPosition));
+    TRY(m_files_mapper->read_until_filled(buffer));
+    return {};
+}
+
 ErrorOr<bool> TorrentDataFileMap::write_piece(u32 index, ReadonlyBytes data)
 {
     TRY(m_files_mapper->seek(index * m_piece_length, SeekMode::SetPosition));
@@ -175,7 +184,7 @@ ErrorOr<bool> TorrentDataFileMap::check_piece(i64 index, bool is_last_piece)
     auto piece_data = TRY(ByteBuffer::create_zeroed(piece_length));
     TRY(m_files_mapper->read_until_filled(piece_data.bytes()));
 
-    return validate_hash(index, piece_data.bytes().slice(0, piece_length));
+    return validate_hash(index, piece_data);
 }
 
 ErrorOr<bool> TorrentDataFileMap::validate_hash(i64 index, AK::ReadonlyBytes data)

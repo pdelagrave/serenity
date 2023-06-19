@@ -74,13 +74,14 @@ private:
 class TorrentDataFileMap {
 public:
     TorrentDataFileMap(ByteBuffer piece_hashes, i64 piece_length, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> files);
+    ErrorOr<void> read_piece(u32 index, Bytes buffer);
     ErrorOr<bool> write_piece(u32 index, ReadonlyBytes data);
     ErrorOr<bool> check_piece(i64 index, bool is_last_piece);
     ErrorOr<bool> validate_hash(i64 index, ReadonlyBytes data);
 
 private:
     ByteBuffer m_piece_hashes;
-    i64 m_piece_length;
+    u64 m_piece_length;
     NonnullOwnPtr<MultiFileMapperStream> m_files_mapper;
     Crypto::Hash::Manager m_sha1 { Crypto::Hash::HashKind::SHA1 };
 };

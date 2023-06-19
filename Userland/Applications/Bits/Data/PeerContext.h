@@ -15,14 +15,39 @@ namespace Bits::Data {
 
 struct TorrentContext;
 
+struct PeerConnection : public RefCounted<PeerConnection> {
+    static ErrorOr<NonnullRefPtr<PeerConnection>> try_create(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier> write_notifier, size_t input_buffer_size, size_t output_buffer_size);
+
+    NonnullOwnPtr<Core::TCPSocket> socket;
+    NonnullRefPtr<Core::Notifier> socket_writable_notifier;
+
+    CircularBuffer input_message_buffer;
+    CircularBuffer output_message_buffer;
+
+    BigEndian<u32> incoming_message_length = sizeof(BitTorrent::Handshake);
+
+    Core::DateTime last_message_received_at;
+    Core::DateTime last_message_sent_at;
+
+    u64 bytes_downloaded_since_last_speed_measurement { 0 };
+    u64 download_speed { 0 };
+
+    u64 bytes_uploaded_since_last_speed_measurement { 0 };
+    u64 upload_speed { 0 };
+
+    bool handshake_received { false };
+    bool handshake_sent { false };
+
+private:
+    PeerConnection(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier>& write_notifier, CircularBuffer& input_message_buffer, CircularBuffer& output_message_buffer);
+};
+
 struct PeerContext : public RefCounted<PeerContext> {
-    PeerContext(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, CircularBuffer input_message_buffer, CircularBuffer output_message_buffer);
-    static NonnullRefPtr<PeerContext> create(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address, size_t input_buffer_size, size_t output_buffer_size);
+    PeerContext(NonnullRefPtr<TorrentContext> tcontext, Core::SocketAddress address);
 
     const NonnullRefPtr<TorrentContext> torrent_context;
     const Core::SocketAddress address;
 
-    bool got_handshake = false;
     // TODO: Make this into a PeerContextState enum?
     bool connected = false;
     bool active = false;
@@ -45,21 +70,7 @@ struct PeerContext : public RefCounted<PeerContext> {
         size_t length;
     } incoming_piece;
 
-    BigEndian<u32> incoming_message_length = sizeof(BitTorrent::Handshake);
-    CircularBuffer input_message_buffer;
-
-    u64 bytes_downloaded_since_last_speed_measurement { 0 };
-    u64 download_speed { 0 };
-
-    u64 bytes_uploaded_since_last_speed_measurement { 0 };
-    u64 upload_speed { 0 };
-
-    Core::DateTime last_message_received_at;
-    Core::DateTime last_message_sent_at;
-
-    CircularBuffer output_message_buffer;
-    RefPtr<Core::Notifier> socket_writable_notifier {};
-    OwnPtr<Core::TCPSocket> socket {};
+    RefPtr<PeerConnection> connection;
 };
 
 }

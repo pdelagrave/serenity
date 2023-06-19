@@ -16,7 +16,7 @@
 
 ErrorOr<int> serenity_main(Main::Arguments arguments)
 {
-    TRY(Core::System::pledge("stdio unix recvfd rpath sendfd inet wpath cpath thread"));
+    TRY(Core::System::pledge("stdio unix recvfd rpath sendfd inet wpath cpath thread accept"));
 
     bool skip_checking = false;
     bool assume_valid_when_skip_checking = false;

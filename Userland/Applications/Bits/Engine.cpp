@@ -156,12 +156,17 @@ void Engine::start_torrent(int torrent_id)
                     torrent->local_port(),
                     local_bitfield,
                     torrent->data_file_map().release_nonnull());
-                comm.activate_torrent(move(tcontext));
+                comm.activate_torrent(tcontext);
 
-                announce(torrent, [this, torrent, info_hash](auto peers) {
+                announce(torrent, [this, tcontext, info_hash](auto peers) {
                     // announce finished callback, now on the UI loop/thread
                     // TODO: if we seed, we don't add peers.
-                    comm.add_peers(info_hash, move(peers));
+                    dbgln("Peers from tracker:");
+                    for (auto& peer: peers) {
+                        dbgln("{}", peer);
+                    }
+                    if (tcontext->local_bitfield.progress() < 100)
+                        comm.add_peers(info_hash, move(peers));
                 }).release_value_but_fixme_should_propagate_errors();
             });
         });
@@ -201,7 +206,7 @@ ErrorOr<void> Engine::announce(Torrent& torrent, Function<void(Vector<Core::Sock
     // should be generated per session per torrent.
     u64 key = get_random<u64>();
 
-    url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&uploaded=1&downloaded=1&left=2&key={}", info_hash, my_peer_id, torrent.local_port(), key)).to_deprecated_string());
+    url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&uploaded=1&downloaded=1&left=10&key={}", info_hash, my_peer_id, torrent.local_port(), key)).to_deprecated_string());
     dbgln("query: {}", url.query());
     auto request = m_protocol_client->start_request("GET", url);
     m_active_requests.set(*request);

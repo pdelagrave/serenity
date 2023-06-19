@@ -9,6 +9,7 @@
 #include "PeerContext.h"
 #include "TorrentContext.h"
 #include <AK/Stack.h>
+#include <LibCore/TCPServer.h>
 #include <LibThreading/Thread.h>
 
 namespace Bits::Data {
@@ -38,6 +39,7 @@ private:
 
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
+    NonnullRefPtr<Core::TCPServer> m_server;
 
     HashMap<ReadonlyBytes, NonnullRefPtr<TorrentContext>> m_torrent_contexts;
     timeval m_last_speed_measurement;
@@ -51,18 +53,25 @@ private:
     // Comm BT message handlers
     ErrorOr<void> parse_input_message(SeekableStream& stream, NonnullRefPtr<PeerContext> peer);
     ErrorOr<void> handle_bitfield(NonnullOwnPtr<BitTorrent::BitFieldMessage>, NonnullRefPtr<PeerContext>);
-    ErrorOr<void> handle_handshake(NonnullOwnPtr<BitTorrent::Handshake> handshake, NonnullRefPtr<PeerContext> pcontext);
     ErrorOr<void> handle_have(NonnullOwnPtr<BitTorrent::Have> have_message, NonnullRefPtr<PeerContext> pcontext);
+    ErrorOr<void> handle_interested(NonnullRefPtr<PeerContext> peer);
     ErrorOr<void> handle_piece(NonnullOwnPtr<BitTorrent::Piece>, NonnullRefPtr<PeerContext> pcontext);
+    ErrorOr<void> handle_request(NonnullOwnPtr<BitTorrent::Request>, NonnullRefPtr<PeerContext> pcontext);
 
     // Comm BT low level network functions
-    ErrorOr<void> read_from_socket(NonnullRefPtr<PeerContext> pcontext);
+    HashMap<NonnullRefPtr<PeerConnection>, NonnullRefPtr<PeerContext>> m_connecting_peers;
+    HashTable<NonnullRefPtr<PeerConnection>> m_accepted_connections;
+
+    ErrorOr<void> read_from_socket(NonnullRefPtr<PeerConnection> connection);
     void send_message(NonnullOwnPtr<BitTorrent::Message> message, NonnullRefPtr<PeerContext> peer);
-    void flush_output_buffer(NonnullRefPtr<PeerContext> peer);
+    ErrorOr<void> flush_output_buffer(NonnullRefPtr<PeerConnection> connection);
     void connect_more_peers(NonnullRefPtr<TorrentContext>);
     ErrorOr<void> connect_to_peer(NonnullRefPtr<PeerContext> pcontext);
+    ErrorOr<void> send_handshake(ReadonlyBytes info_hash, ReadonlyBytes local_peer_id, NonnullRefPtr<PeerConnection> connection);
     void set_peer_errored(NonnullRefPtr<PeerContext> peer, bool should_connect_more_peers = true);
+    void close_connection(NonnullRefPtr<PeerConnection> connection);
     u64 get_available_peers_count(NonnullRefPtr<TorrentContext> torrent) const;
+    ErrorOr<void> on_ready_to_accept();
 
     // dbgln with Context
     Vector<NonnullRefPtr<PeerContext>> m_peer_context_stack;

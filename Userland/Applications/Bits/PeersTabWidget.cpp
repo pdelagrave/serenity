@@ -84,9 +84,9 @@ public:
             case Column::Progress:
                 return DeprecatedString::formatted("{:.1}%", peer->bitfield.progress());
             case Column::DownloadSpeed:
-                return DeprecatedString::formatted("{}/s", human_readable_size(peer->download_speed));
+                return DeprecatedString::formatted("{}/s", human_readable_size(peer->connection->download_speed));
             case Column::UploadSpeed:
-                return DeprecatedString::formatted("{}/s", human_readable_size(peer->upload_speed));
+                return DeprecatedString::formatted("{}/s", human_readable_size(peer->connection->upload_speed));
             case Column::IsChokedByUs:
                 return peer->we_are_choking_peer;
             case Column::IsChokingUs:

@@ -44,6 +44,22 @@ DeprecatedString BitFieldMessage::to_string() const
     return DeprecatedString::formatted("BitField: bytes:{} size:{} ones:{} zeroes:{} progress:{:.1}%", bitfield.bytes(), bitfield.size(), bitfield.ones(), bitfield.zeroes(), bitfield.progress());
 }
 
+DeprecatedString Handshake::to_string() const
+{
+    return DeprecatedString::formatted("Handshake: Protocol: {}, Reserved: {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b}, info_hash: {:20hex-dump}, peer_id: {:20hex-dump}",
+        pstr,
+        reserved[0],
+        reserved[1],
+        reserved[2],
+        reserved[3],
+        reserved[4],
+        reserved[5],
+        reserved[6],
+        reserved[7],
+        info_hash,
+        peer_id);
+}
+
 DeprecatedString Have::to_string() const
 {
     return DeprecatedString::formatted("Have: piece:{}", piece_index);
