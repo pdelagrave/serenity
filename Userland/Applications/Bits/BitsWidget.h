@@ -56,9 +56,9 @@ private:
 class BitsWidget final : public GUI::Widget {
     C_OBJECT(BitsWidget)
 public:
-    static ErrorOr<NonnullRefPtr<BitsWidget>> create(NonnullRefPtr<Bits::Engine> engine);
+    static ErrorOr<NonnullRefPtr<BitsWidget>> create(NonnullRefPtr<Bits::Engine> engine, GUI::Window* window);
     virtual ~BitsWidget() override = default;
-    ErrorOr<void> open_file(String const& filename, NonnullOwnPtr<Core::File>, bool start);
+    void open_file(String const& filename, NonnullOwnPtr<Core::File>, bool start);
 
 private:
     BitsWidget(NonnullRefPtr<Bits::Engine>);

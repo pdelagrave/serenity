@@ -5,10 +5,9 @@
  */
 
 #include "Engine.h"
-#include "AK/LexicalPath.h"
-#include "Userland/Libraries/LibCore/System.h"
-#include "Userland/Libraries/LibFileSystem/FileSystem.h"
-#include "Userland/Libraries/LibProtocol/Request.h"
+#include <AK/LexicalPath.h>
+#include <LibFileSystem/FileSystem.h>
+#include <LibProtocol/Request.h>
 
 namespace Bits {
 
@@ -31,7 +30,8 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
     m_torrents.append(move(torrent));
 }
 
-Optional<NonnullRefPtr<TorrentContext>> Engine::get_torrent_context(ReadonlyBytes info_hash) {
+Optional<NonnullRefPtr<TorrentContext>> Engine::get_torrent_context(ReadonlyBytes info_hash)
+{
     return comm.get_torrent_context(info_hash);
 }
 
@@ -142,7 +142,7 @@ void Engine::start_torrent(int torrent_id)
         }
 
         auto info_hash = torrent->meta_info().info_hash();
-        torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent, info_hash, origin_event_loop = &Core::EventLoop::current()] (BitField local_bitfield) {
+        torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent, info_hash, origin_event_loop = &Core::EventLoop::current()](BitField local_bitfield) {
             // Checking finished callback, still on the background thread
             torrent->set_state(TorrentState::STARTED);
             // announcing using the UI thread/loop:
@@ -162,7 +162,7 @@ void Engine::start_torrent(int torrent_id)
                     // announce finished callback, now on the UI loop/thread
                     // TODO: if we seed, we don't add peers.
                     dbgln("Peers from tracker:");
-                    for (auto& peer: peers) {
+                    for (auto& peer : peers) {
                         dbgln("{}", peer);
                     }
                     if (tcontext->local_bitfield.progress() < 100)
@@ -253,15 +253,6 @@ ErrorOr<void> Engine::announce(Torrent& torrent, Function<void(Vector<Core::Sock
     request->set_should_buffer_all_input(true);
 
     return {};
-}
-
-ErrorOr<String> Engine::hexdump(ReadonlyBytes bytes)
-{
-    StringBuilder builder;
-    for (size_t i = 0; i < bytes.size(); ++i) {
-        builder.appendff("{:02X}", bytes[i]);
-    }
-    return builder.to_string();
 }
 
 Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip_checking, bool assume_valid)

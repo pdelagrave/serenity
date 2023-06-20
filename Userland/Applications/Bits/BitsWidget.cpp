@@ -7,17 +7,13 @@
 #include "BitsWidget.h"
 #include "BitsUiEvents.h"
 #include "PeersTabWidget.h"
-#include "Userland/Applications/Bits/LibBits/Engine.h"
-#include "Userland/Applications/Bits/LibBits/MetaInfo.h"
-#include "Userland/Applications/Bits/LibBits/Net/PeerContext.h"
-#include "Userland/Applications/Bits/LibBits/Net/PieceHeap.h"
-#include "Userland/Applications/Bits/LibBits/Net/TorrentContext.h"
-#include "Userland/Applications/Bits/LibBits/Torrent.h"
 #include <AK/NumberFormat.h>
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>
+#include <LibGUI/Application.h>
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Menu.h>
+#include <LibGUI/MessageBox.h>
 #include <LibGUI/SortingProxyModel.h>
 #include <LibGUI/Splitter.h>
 
@@ -87,12 +83,18 @@ String TorrentModel::column_name(int column) const
     }
 }
 
-ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> file, bool start)
+void BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> file, bool start)
 {
     dbgln("Opening file {}", filename);
-    auto meta_info = TRY(Bits::MetaInfo::create(*file));
+    auto maybe_meta_info = Bits::MetaInfo::create(*file);
     file->close();
-    m_engine->add_torrent(move(meta_info), Core::StandardPaths::downloads_directory());
+
+    if (maybe_meta_info.is_error()) {
+        GUI::MessageBox::show_error(this->window(), "Error opening file"sv);
+        return;
+    }
+
+    m_engine->add_torrent(maybe_meta_info.release_value(), Core::StandardPaths::downloads_directory());
 
     if (start)
         m_engine->start_torrent(m_engine->torrents().size() - 1);
@@ -100,14 +102,36 @@ ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::
     if (m_engine->torrents().size() > 0)
         m_torrents_table_view->selection().set(m_torrents_table_view->model()->index(0, 0));
 
-    return {};
+    return;
 }
 
-ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine> engine)
+ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine> engine, GUI::Window* window)
 {
     auto widget = TRY(adopt_nonnull_ref_or_enomem(new (nothrow) BitsWidget(move(engine))));
 
     widget->set_layout<GUI::VerticalBoxLayout>();
+
+    auto& file_menu = window->add_menu("&File"_string.release_value());
+
+    file_menu.add_action(GUI::CommonActions::make_open_action([window, widget](auto&) {
+        FileSystemAccessClient::OpenFileOptions options {
+            .window_title = "Open a torrent file"sv,
+            .path = Core::StandardPaths::home_directory(),
+            .requested_access = Core::File::OpenMode::Read,
+            .allowed_file_types = { { GUI::FileTypeFilter { "Torrent Files", { { "torrent" } } }, GUI::FileTypeFilter::all_files() } }
+        };
+        auto maybe_file = FileSystemAccessClient::Client::the().open_file(window, options);
+        if (maybe_file.is_error()) {
+            dbgln("err: {}", maybe_file.error());
+            return;
+        }
+
+        widget->open_file(maybe_file.value().filename(), maybe_file.value().release_stream(), false);
+    }));
+
+    file_menu.add_action(GUI::CommonActions::make_quit_action([&](auto&) {
+        GUI::Application::the()->quit();
+    }));
 
     auto start_torrent_action = GUI::Action::create("Start",
         [widget](GUI::Action&) {
@@ -166,6 +190,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
     });
 
     widget->m_torrents_table_view->on_selection_change = [widget] {
+        dbgln("SELECTION CHANGED!");
         Core::EventLoop::current().post_event(*widget->m_peer_list_widget, make<Core::CustomEvent>(BitsUiEvents::TorrentSelected));
     };
 
