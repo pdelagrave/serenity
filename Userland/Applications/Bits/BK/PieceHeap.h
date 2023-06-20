@@ -43,11 +43,10 @@ public:
     void update(Value value);
 
 private:
-    static constexpr u64 m_capacity = 100000;
     void swap(Value& a, Value& b);
     void heapify_down(size_t index);
     void heapify_up(size_t index);
-    Vector<Value, m_capacity> m_elements;
+    Vector<Value> m_elements;
     size_t m_size { 0 };
 };
 

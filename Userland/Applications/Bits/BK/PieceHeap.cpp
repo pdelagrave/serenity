@@ -22,9 +22,12 @@ size_t PieceStatus::key() const
 
 void PieceHeap::insert(PieceHeap::Value value)
 {
-    VERIFY(m_size < m_capacity);
     auto index = m_size++;
-    m_elements.empend(value);
+    if (m_elements.size() < m_size)
+        m_elements.empend(value);
+    else
+        m_elements[m_size - 1] = value;
+    
     value->index_in_heap = index;
     heapify_up(index);
 }
