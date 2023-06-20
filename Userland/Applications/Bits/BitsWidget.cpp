@@ -16,12 +16,10 @@
 #include <LibGUI/SortingProxyModel.h>
 #include <LibGUI/Splitter.h>
 
-namespace Bits {
-
 ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> file, bool start)
 {
     dbgln("Opening file {}", filename);
-    auto meta_info = TRY(MetaInfo::create(*file));
+    auto meta_info = TRY(Bits::MetaInfo::create(*file));
     file->close();
     m_engine->add_torrent(move(meta_info), Core::StandardPaths::downloads_directory());
 
@@ -34,7 +32,7 @@ ErrorOr<void> BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::
     return {};
 }
 
-ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Engine> engine)
+ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine> engine)
 {
     auto widget = TRY(adopt_nonnull_ref_or_enomem(new (nothrow) BitsWidget(move(engine))));
 
@@ -72,12 +70,12 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Engine> engi
     widget->m_torrents_table_view->on_context_menu_request = [widget, start_torrent_action, stop_torrent_action, cancel_checking_torrent_action](const GUI::ModelIndex& model_index, const GUI::ContextMenuEvent& event) {
         if (model_index.is_valid()) {
             widget->m_torrent_context_menu = GUI::Menu::construct();
-            TorrentState state = widget->m_engine->torrents().at(model_index.row())->state();
-            if (state == TorrentState::STOPPED || state == TorrentState::ERROR)
+            Bits::TorrentState state = widget->m_engine->torrents().at(model_index.row())->state();
+            if (state == Bits::TorrentState::STOPPED || state == Bits::TorrentState::ERROR)
                 widget->m_torrent_context_menu->add_action(start_torrent_action);
-            else if (state == TorrentState::STARTED)
+            else if (state == Bits::TorrentState::STARTED)
                 widget->m_torrent_context_menu->add_action(stop_torrent_action);
-            else if (state == TorrentState::CHECKING)
+            else if (state == Bits::TorrentState::CHECKING)
                 widget->m_torrent_context_menu->add_action(cancel_checking_torrent_action);
 
             widget->m_torrent_context_menu->popup(event.screen_position());
@@ -89,7 +87,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Engine> engi
     widget->m_peer_list_widget = widget->m_bottom_tab_widget->add_tab<PeersTabWidget>("Peers"_string.release_value(), [widget] {
         int selected_index = widget->m_torrents_table_view->selection().first().row();
         if (selected_index < 0) {
-            return Optional<NonnullRefPtr<Data::TorrentContext>> {};
+            return Optional<NonnullRefPtr<Bits::TorrentContext>> {};
         } else {
 
             return widget->m_engine->get_torrent_context(widget->m_engine->torrents().at(selected_index)->meta_info().info_hash());
@@ -116,9 +114,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Engine> engi
     return widget;
 }
 
-BitsWidget::BitsWidget(NonnullRefPtr<Engine> engine)
+BitsWidget::BitsWidget(NonnullRefPtr<Bits::Engine> engine)
     : m_engine(move(engine))
 {
-}
-
 }

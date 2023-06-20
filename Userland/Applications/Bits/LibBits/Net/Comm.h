@@ -12,7 +12,7 @@
 #include "Userland/Libraries/LibCore/TCPServer.h"
 #include "Userland/Libraries/LibThreading/Thread.h"
 
-namespace Bits::Data {
+namespace Bits {
 
 class Comm : public Core::Object {
     C_OBJECT(Comm);
@@ -22,8 +22,8 @@ public:
     void activate_torrent(NonnullRefPtr<TorrentContext> torrent);
     void deactivate_torrent(ReadonlyBytes info_hash);
     void add_peers(ReadonlyBytes info_hash, Vector<Core::SocketAddress> peers);
-    Optional<NonnullRefPtr<Data::TorrentContext>> get_torrent_context(ReadonlyBytes);
-    Vector<NonnullRefPtr<Data::TorrentContext>> get_torrent_contexts();
+    Optional<NonnullRefPtr<TorrentContext>> get_torrent_context(ReadonlyBytes);
+    Vector<NonnullRefPtr<TorrentContext>> get_torrent_contexts();
 
     const u16 max_total_connections = 100;
     const u16 max_connections_per_torrent = 10;
@@ -52,18 +52,18 @@ private:
 
     // Comm BT message handlers
     ErrorOr<void> parse_input_message(SeekableStream& stream, NonnullRefPtr<PeerContext> peer);
-    ErrorOr<void> handle_bitfield(NonnullOwnPtr<BitTorrent::BitFieldMessage>, NonnullRefPtr<PeerContext>);
-    ErrorOr<void> handle_have(NonnullOwnPtr<BitTorrent::Have> have_message, NonnullRefPtr<PeerContext> pcontext);
+    ErrorOr<void> handle_bitfield(NonnullOwnPtr<BitFieldMessage>, NonnullRefPtr<PeerContext>);
+    ErrorOr<void> handle_have(NonnullOwnPtr<HaveMessage> have_message, NonnullRefPtr<PeerContext> pcontext);
     ErrorOr<void> handle_interested(NonnullRefPtr<PeerContext> peer);
-    ErrorOr<void> handle_piece(NonnullOwnPtr<BitTorrent::Piece>, NonnullRefPtr<PeerContext> pcontext);
-    ErrorOr<void> handle_request(NonnullOwnPtr<BitTorrent::Request>, NonnullRefPtr<PeerContext> pcontext);
+    ErrorOr<void> handle_piece(NonnullOwnPtr<PieceMessage>, NonnullRefPtr<PeerContext> pcontext);
+    ErrorOr<void> handle_request(NonnullOwnPtr<RequestMessage>, NonnullRefPtr<PeerContext> pcontext);
 
     // Comm BT low level network functions
     HashMap<NonnullRefPtr<PeerConnection>, NonnullRefPtr<PeerContext>> m_connecting_peers;
     HashTable<NonnullRefPtr<PeerConnection>> m_accepted_connections;
 
     ErrorOr<void> read_from_socket(NonnullRefPtr<PeerConnection> connection);
-    void send_message(NonnullOwnPtr<BitTorrent::Message> message, NonnullRefPtr<PeerContext> peer);
+    void send_message(NonnullOwnPtr<Message> message, NonnullRefPtr<PeerContext> peer);
     ErrorOr<void> flush_output_buffer(NonnullRefPtr<PeerConnection> connection);
     void connect_more_peers(NonnullRefPtr<TorrentContext>);
     ErrorOr<void> connect_to_peer(NonnullRefPtr<PeerContext> pcontext);

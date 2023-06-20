@@ -7,7 +7,7 @@
 #include "PeerContext.h"
 #include "TorrentContext.h"
 
-namespace Bits::Data {
+namespace Bits {
 
 ErrorOr<NonnullRefPtr<PeerConnection>> PeerConnection::try_create(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier> write_notifier, size_t input_buffer_size, size_t output_buffer_size)
 {

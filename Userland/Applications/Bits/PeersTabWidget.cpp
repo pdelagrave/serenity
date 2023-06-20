@@ -11,11 +11,9 @@
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Model.h>
 
-namespace Bits {
-
 class PeerListModel final : public GUI::Model {
 public:
-    explicit PeerListModel(Optional<NonnullRefPtr<Data::TorrentContext>> torrent)
+    explicit PeerListModel(Optional<NonnullRefPtr<Bits::TorrentContext>> torrent)
     {
         set_torrent(torrent);
     }
@@ -106,18 +104,18 @@ public:
         did_update(UpdateFlag::DontInvalidateIndices);
     }
 
-    void set_torrent(Optional<NonnullRefPtr<Data::TorrentContext>> tcontext)
+    void set_torrent(Optional<NonnullRefPtr<Bits::TorrentContext>> tcontext)
     {
         m_tcontext = tcontext;
         update();
     }
 
 private:
-    Optional<NonnullRefPtr<Data::TorrentContext>> m_tcontext;
-    Vector<NonnullRefPtr<Data::PeerContext>> m_peers;
+    Optional<NonnullRefPtr<Bits::TorrentContext>> m_tcontext;
+    Vector<NonnullRefPtr<Bits::PeerContext>> m_peers;
 };
 
-PeersTabWidget::PeersTabWidget(Function<Optional<NonnullRefPtr<Data::TorrentContext>>()> get_current_torrent)
+PeersTabWidget::PeersTabWidget(Function<Optional<NonnullRefPtr<Bits::TorrentContext>>()> get_current_torrent)
     : m_get_current_torrent(move(get_current_torrent))
 {
     set_layout<GUI::VerticalBoxLayout>();
@@ -137,9 +135,7 @@ void PeersTabWidget::custom_event(Core::CustomEvent& event)
     }
 }
 
-void PeersTabWidget::set_torrent(Optional<NonnullRefPtr<Data::TorrentContext>> torrent)
+void PeersTabWidget::set_torrent(Optional<NonnullRefPtr<Bits::TorrentContext>> torrent)
 {
     static_cast<PeerListModel*>(m_peers_view->model())->set_torrent(torrent);
-}
-
 }

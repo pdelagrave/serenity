@@ -11,7 +11,7 @@
 #include "Userland/Libraries/LibCore/DateTime.h"
 #include "Userland/Libraries/LibCore/Socket.h"
 
-namespace Bits::Data {
+namespace Bits {
 
 struct TorrentContext;
 
@@ -24,7 +24,7 @@ struct PeerConnection : public RefCounted<PeerConnection> {
     CircularBuffer input_message_buffer;
     CircularBuffer output_message_buffer;
 
-    BigEndian<u32> incoming_message_length = sizeof(BitTorrent::Handshake);
+    BigEndian<u32> incoming_message_length = sizeof(HandshakeMessage);
 
     Core::DateTime last_message_received_at;
     Core::DateTime last_message_sent_at;
@@ -76,8 +76,8 @@ struct PeerContext : public RefCounted<PeerContext> {
 }
 
 template<>
-struct AK::Formatter<Bits::Data::PeerContext> : AK::Formatter<StringView> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::Data::PeerContext const& value)
+struct AK::Formatter<Bits::PeerContext> : AK::Formatter<StringView> {
+    ErrorOr<void> format(FormatBuilder& builder, Bits::PeerContext const& value)
     {
         return Formatter<StringView>::format(builder, DeprecatedString::formatted("{}", value.address));
     }

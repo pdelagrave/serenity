@@ -6,9 +6,6 @@
 
 #pragma once
 
-namespace Bits {
-
 enum BitsUiEvents {
     TorrentSelected
 };
-} // Bits

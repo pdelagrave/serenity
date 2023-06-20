@@ -8,7 +8,7 @@
 #include "Userland/Applications/Bits/LibBits/Net/PeerContext.h"
 #include "Userland/Applications/Bits/LibBits/Net/TorrentContext.h"
 
-namespace Bits::BK {
+namespace Bits {
 
 PieceStatus::PieceStatus(u64 index_in_torrent)
     : index_in_torrent(index_in_torrent)

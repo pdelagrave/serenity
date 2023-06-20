@@ -31,7 +31,7 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
     m_torrents.append(move(torrent));
 }
 
-Optional<NonnullRefPtr<Data::TorrentContext>> Engine::get_torrent_context(ReadonlyBytes info_hash) {
+Optional<NonnullRefPtr<TorrentContext>> Engine::get_torrent_context(ReadonlyBytes info_hash) {
     return comm.get_torrent_context(info_hash);
 }
 
@@ -149,7 +149,7 @@ void Engine::start_torrent(int torrent_id)
             origin_event_loop->deferred_invoke([this, torrent, info_hash, local_bitfield = move(local_bitfield)] {
                 dbgln("we have {}/{} pieces", local_bitfield.ones(), torrent->piece_count());
 
-                auto tcontext = make_ref_counted<Data::TorrentContext>(info_hash,
+                auto tcontext = make_ref_counted<TorrentContext>(info_hash,
                     torrent->local_peer_id(),
                     (u64)torrent->meta_info().total_length(),
                     (u64)torrent->meta_info().piece_length(),
@@ -285,7 +285,7 @@ ErrorOr<NonnullRefPtr<Engine>> Engine::try_create(bool skip_checking, bool assum
     auto protocol_client = TRY(Protocol::RequestClient::try_create());
     return adopt_nonnull_ref_or_enomem(new (nothrow) Engine(move(protocol_client), skip_checking, assume_valid));
 }
-Vector<NonnullRefPtr<Data::TorrentContext>> Engine::get_torrent_contexts()
+Vector<NonnullRefPtr<TorrentContext>> Engine::get_torrent_contexts()
 {
     return comm.get_torrent_contexts();
 }

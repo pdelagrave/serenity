@@ -13,18 +13,15 @@
 #include "AK/Types.h"
 #include "AK/Vector.h"
 
-namespace Bits::Data {
+namespace Bits {
 struct PeerContext;
-}
-
-namespace Bits::BK {
 
 struct PieceStatus : public RefCounted<PieceStatus> {
     PieceStatus(u64 index_in_torrent);
     Optional<size_t> index_in_heap = {};
     u64 index_in_torrent;
     size_t key() const;
-    HashTable<NonnullRefPtr<Bits::Data::PeerContext>> havers;
+    HashTable<NonnullRefPtr<Bits::PeerContext>> havers;
     bool currently_downloading { false };
 };
 

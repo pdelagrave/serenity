@@ -23,8 +23,8 @@ public:
 
     Vector<NonnullRefPtr<Torrent>> torrents() { return m_torrents; }
     void add_torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
-    Optional<NonnullRefPtr<Data::TorrentContext>> get_torrent_context(ReadonlyBytes);
-    Vector<NonnullRefPtr<Data::TorrentContext>> get_torrent_contexts();
+    Optional<NonnullRefPtr<TorrentContext>> get_torrent_context(ReadonlyBytes);
+    Vector<NonnullRefPtr<TorrentContext>> get_torrent_contexts();
     void start_torrent(int);
     void stop_torrent(int);
     void cancel_checking(int);
@@ -44,7 +44,7 @@ private:
     Vector<NonnullRefPtr<Torrent>> m_torrents;
     ErrorOr<void> announce(Torrent& torrent, Function<void(Vector<Core::SocketAddress>)> on_complete);
 
-    Data::Comm comm;
+    Comm comm;
     bool m_skip_checking;
     bool m_assume_valid;
 };

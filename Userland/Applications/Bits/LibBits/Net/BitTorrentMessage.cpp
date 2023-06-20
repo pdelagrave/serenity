@@ -6,7 +6,7 @@
 
 #include "BitTorrentMessage.h"
 
-namespace Bits::BitTorrent {
+namespace Bits {
 
 DeprecatedString Message::to_string(Type type)
 {
@@ -44,7 +44,7 @@ DeprecatedString BitFieldMessage::to_string() const
     return DeprecatedString::formatted("BitField: bytes:{} size:{} ones:{} zeroes:{} progress:{:.1}%", bitfield.bytes(), bitfield.size(), bitfield.ones(), bitfield.zeroes(), bitfield.progress());
 }
 
-DeprecatedString Handshake::to_string() const
+DeprecatedString HandshakeMessage::to_string() const
 {
     return DeprecatedString::formatted("Handshake: Protocol: {}, Reserved: {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b} {:08b}, info_hash: {:20hex-dump}, peer_id: {:20hex-dump}",
         pstr,
@@ -60,17 +60,17 @@ DeprecatedString Handshake::to_string() const
         peer_id);
 }
 
-DeprecatedString Have::to_string() const
+DeprecatedString HaveMessage::to_string() const
 {
     return DeprecatedString::formatted("Have: piece:{}", piece_index);
 }
 
-DeprecatedString Piece::to_string() const
+DeprecatedString PieceMessage::to_string() const
 {
     return DeprecatedString::formatted("Piece: piece:{} offset:{} blocksize:{}", piece_index, begin_offset, block.size());
 }
 
-DeprecatedString Request::to_string() const
+DeprecatedString RequestMessage::to_string() const
 {
     return DeprecatedString::formatted("Request: piece:{} offset:{} blocksize:{}", piece_index, piece_offset, block_length);
 }

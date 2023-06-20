@@ -11,21 +11,18 @@
 #include <LibGUI/Widget.h>
 
 namespace Bits {
-namespace Data {
 struct TorrentContext;
 }
 
 class PeersTabWidget : public GUI::Widget {
     C_OBJECT(PeersTabWidget)
 public:
-    PeersTabWidget(Function<Optional<NonnullRefPtr<Data::TorrentContext>>()> get_current_torrent);
+    PeersTabWidget(Function<Optional<NonnullRefPtr<Bits::TorrentContext>>()> get_current_torrent);
     void refresh();
 protected:
     void custom_event(Core::CustomEvent& event) override;
 private:
-    void set_torrent(Optional<NonnullRefPtr<Data::TorrentContext>> torrent);
-    Function<Optional<NonnullRefPtr<Data::TorrentContext>>()> m_get_current_torrent;
+    void set_torrent(Optional<NonnullRefPtr<Bits::TorrentContext>> torrent);
+    Function<Optional<NonnullRefPtr<Bits::TorrentContext>>()> m_get_current_torrent;
     RefPtr<GUI::TableView> m_peers_view;
 };
-
-}

@@ -15,7 +15,7 @@
 #include "Userland/Applications/Bits/LibBits/BitField.h"
 #include <initializer_list>
 
-namespace Bits::BitTorrent {
+namespace Bits {
 
 class Message {
 public:
@@ -118,22 +118,22 @@ public:
     DeprecatedString to_string() const override;
 };
 
-class Choke : public Message {
+class ChokeMessage : public Message {
 public:
-    Choke()
+    ChokeMessage()
         : Message(Type::Choke, StreamWritable({}))
     {
     }
 };
 
-struct Handshake {
+struct HandshakeMessage {
     u8 pstrlen;
     u8 pstr[19];
     u8 reserved[8];
     u8 info_hash[20];
     u8 peer_id[20];
 
-    Handshake(ReadonlyBytes info_hash, ReadonlyBytes peer_id)
+    HandshakeMessage(ReadonlyBytes info_hash, ReadonlyBytes peer_id)
         : pstrlen(19)
     {
         VERIFY(info_hash.size() == 20);
@@ -144,27 +144,27 @@ struct Handshake {
         memcpy(this->peer_id, peer_id.data(), 20);
     }
 
-    Handshake() = default;
+    HandshakeMessage() = default;
 
-    static ErrorOr<NonnullOwnPtr<Handshake>> try_create(Stream& stream)
+    static ErrorOr<NonnullOwnPtr<HandshakeMessage>> try_create(Stream& stream)
     {
-        auto handshake = new (nothrow) Handshake();
-        TRY(stream.read_until_filled(Bytes { handshake, sizeof(Handshake) }));
+        auto handshake = new (nothrow) HandshakeMessage();
+        TRY(stream.read_until_filled(Bytes { handshake, sizeof(HandshakeMessage) }));
         return adopt_nonnull_own_or_enomem(handshake);
     }
 
     DeprecatedString to_string() const;
 };
 
-class Have : public Message {
+class HaveMessage : public Message {
 public:
-    Have(BigEndian<u32> piece_index)
+    HaveMessage(BigEndian<u32> piece_index)
         : Message(Type::Have, piece_index)
         , piece_index(piece_index)
     {
     }
 
-    Have(SeekableStream& stream)
+    HaveMessage(SeekableStream& stream)
         : Message(stream)
         , piece_index(stream.read_value<BigEndian<u32>>().release_value_but_fixme_should_propagate_errors())
     {
@@ -174,28 +174,28 @@ public:
     DeprecatedString to_string() const override;
 };
 
-class Interested : public Message {
+class InterestedMessage : public Message {
 public:
-    Interested()
+    InterestedMessage()
         : Message(Type::Interested, StreamWritable({}))
     {
     }
 };
 
-class KeepAlive : public Message {
+class KeepAliveMessage : public Message {
 };
 
-class NotInterested : public Message {
+class NotInterestedMessage : public Message {
 public:
-    NotInterested()
+    NotInterestedMessage()
         : Message(Type::NotInterested, StreamWritable({}))
     {
     }
 };
 
-class Piece : public Message {
+class PieceMessage : public Message {
 public:
-    Piece(BigEndian<u32> piece_index, BigEndian<u32> begin_offset, ByteBuffer block)
+    PieceMessage(BigEndian<u32> piece_index, BigEndian<u32> begin_offset, ByteBuffer block)
         : Message(Type::Piece, piece_index, begin_offset)
         , piece_index(piece_index)
         , begin_offset(begin_offset)
@@ -204,7 +204,7 @@ public:
         serialized.append(block);
     }
 
-    Piece(SeekableStream& stream)
+    PieceMessage(SeekableStream& stream)
         : Message(stream)
         , piece_index(stream.read_value<BigEndian<u32>>().release_value_but_fixme_should_propagate_errors())
         , begin_offset(stream.read_value<BigEndian<u32>>().release_value_but_fixme_should_propagate_errors())
@@ -218,9 +218,9 @@ public:
     DeprecatedString to_string() const override;
 };
 
-class Request : public Message {
+class RequestMessage : public Message {
 public:
-    Request(BigEndian<u32> piece_index, BigEndian<u32> piece_offset, BigEndian<u32> block_length)
+    RequestMessage(BigEndian<u32> piece_index, BigEndian<u32> piece_offset, BigEndian<u32> block_length)
         : Message(Type::Request, piece_index, piece_offset, block_length)
         , piece_index(piece_index)
         , piece_offset(piece_offset)
@@ -228,7 +228,7 @@ public:
     {
     }
 
-    Request(SeekableStream& stream)
+    RequestMessage(SeekableStream& stream)
         : Message(stream)
         , piece_index(stream.read_value<BigEndian<u32>>().release_value_but_fixme_should_propagate_errors())
         , piece_offset(stream.read_value<BigEndian<u32>>().release_value_but_fixme_should_propagate_errors())
@@ -242,9 +242,9 @@ public:
     DeprecatedString to_string() const override;
 };
 
-class Unchoke : public Message {
+class UnchokeMessage : public Message {
 public:
-    Unchoke()
+    UnchokeMessage()
         : Message(Type::Unchoke, StreamWritable({}))
     {
     }
@@ -253,8 +253,8 @@ public:
 }
 
 template<>
-struct AK::Formatter<Bits::BitTorrent::Message> : AK::Formatter<StringView> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::BitTorrent::Message const& value)
+struct AK::Formatter<Bits::Message> : AK::Formatter<StringView> {
+    ErrorOr<void> format(FormatBuilder& builder, Bits::Message const& value)
     {
         return Formatter<StringView>::format(builder, value.to_string());
     }

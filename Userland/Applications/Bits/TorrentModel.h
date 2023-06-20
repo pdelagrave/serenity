@@ -7,19 +7,15 @@
 #pragma once
 
 #include <LibGUI/Model.h>
-namespace Bits {
 
-namespace Data {
+namespace Bits {
 struct PeerContext;
 struct TorrentContext;
-}
-
-namespace BK {
 struct PieceStatus;
 class PieceHeap;
 }
 
-using TorrentListCallback = Function<Vector<NonnullRefPtr<Data::TorrentContext>>()>;
+using TorrentListCallback = Function<Vector<NonnullRefPtr<Bits::TorrentContext>>()>;
 
 class TorrentModel final : public GUI::Model {
 public:
@@ -50,7 +46,6 @@ private:
     };
 
     TorrentListCallback m_get_updated_torrent_list;
-    Vector<NonnullRefPtr<Data::TorrentContext>> m_torrents;
+    Vector<NonnullRefPtr<Bits::TorrentContext>> m_torrents;
 };
 
-}

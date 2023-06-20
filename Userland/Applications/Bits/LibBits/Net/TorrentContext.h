@@ -13,7 +13,7 @@
 #include "AK/NonnullRefPtr.h"
 #include "AK/RefCounted.h"
 
-namespace Bits::Data {
+namespace Bits {
 
 struct PeerContext;
 
@@ -30,8 +30,8 @@ struct TorrentContext : RefCounted<TorrentContext> {
     BitField local_bitfield;
     OwnPtr<TorrentDataFileMap> data_file_map;
 
-    BK::PieceHeap piece_heap;
-    HashMap<u64, RefPtr<BK::PieceStatus>> missing_pieces;
+    PieceHeap piece_heap;
+    HashMap<u64, RefPtr<PieceStatus>> missing_pieces;
 
     HashTable<NonnullRefPtr<PeerContext>> all_peers;
     HashTable<NonnullRefPtr<PeerContext>> connected_peers;

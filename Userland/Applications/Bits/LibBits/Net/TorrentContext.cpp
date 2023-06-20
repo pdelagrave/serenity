@@ -7,7 +7,7 @@
 #include "PeerContext.h"
 #include "TorrentContext.h"
 
-namespace Bits::Data {
+namespace Bits {
 
 TorrentContext::TorrentContext(ReadonlyBytes info_hash, ReadonlyBytes local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port, BitField local_bitfield, NonnullOwnPtr<TorrentDataFileMap> data_file_map)
     : info_hash(info_hash)

@@ -41,7 +41,7 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
 
     auto engine = TRY(Bits::Engine::try_create(skip_checking, assume_valid_when_skip_checking));
     Bits::Engine::s_engine = engine.ptr();
-    auto bits_widget = TRY(Bits::BitsWidget::create(engine));
+    auto bits_widget = TRY(BitsWidget::create(engine));
     window->set_main_widget(bits_widget);
 
     auto& file_menu = window->add_menu("&File"_string.release_value());
