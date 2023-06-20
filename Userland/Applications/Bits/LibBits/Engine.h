@@ -7,9 +7,9 @@
 #pragma once
 
 #include "Torrent.h"
-#include "Data/Comm.h"
-#include <LibCore/Object.h>
-#include <LibProtocol/RequestClient.h>
+#include "Userland/Applications/Bits/LibBits/Net/Comm.h"
+#include "Userland/Libraries/LibCore/Object.h"
+#include "Userland/Libraries/LibProtocol/RequestClient.h"
 
 namespace Bits {
 

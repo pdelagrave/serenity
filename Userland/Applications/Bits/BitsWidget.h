@@ -6,13 +6,12 @@
 
 #pragma once
 
-#include "Engine.h"
 #include "PeersTabWidget.h"
-#include "Torrent.h"
 #include "TorrentModel.h"
+#include "Userland/Applications/Bits/LibBits/Engine.h"
+#include "Userland/Applications/Bits/LibBits/Torrent.h"
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
-
 
 namespace Bits {
 

@@ -6,12 +6,12 @@
 
 #pragma once
 
-#include "../BK/PieceHeap.h"
-#include "../BitField.h"
-#include "../TorrentDataFileMap.h"
+#include "PieceHeap.h"
+#include "Userland/Applications/Bits/LibBits/BitField.h"
+#include "Userland/Applications/Bits/LibBits/TorrentDataFileMap.h"
 
-#include <AK/NonnullRefPtr.h>
-#include <AK/RefCounted.h>
+#include "AK/NonnullRefPtr.h"
+#include "AK/RefCounted.h"
 
 namespace Bits::Data {
 

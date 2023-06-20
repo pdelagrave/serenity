@@ -6,11 +6,11 @@
 
 #pragma once
 
+#include "AK/Stack.h"
 #include "PeerContext.h"
 #include "TorrentContext.h"
-#include <AK/Stack.h>
-#include <LibCore/TCPServer.h>
-#include <LibThreading/Thread.h>
+#include "Userland/Libraries/LibCore/TCPServer.h"
+#include "Userland/Libraries/LibThreading/Thread.h"
 
 namespace Bits::Data {
 

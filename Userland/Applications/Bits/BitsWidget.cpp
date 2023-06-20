@@ -6,9 +6,9 @@
 
 #include "BitsWidget.h"
 #include "BitsUiEvents.h"
-#include "Engine.h"
-#include "MetaInfo.h"
 #include "PeersTabWidget.h"
+#include "Userland/Applications/Bits/LibBits/Engine.h"
+#include "Userland/Applications/Bits/LibBits/MetaInfo.h"
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>
 #include <LibGUI/BoxLayout.h>

@@ -5,8 +5,8 @@
  */
 
 #include "PeersTabWidget.h"
-#include "Data/PeerContext.h"
-#include "Data/TorrentContext.h"
+#include "Userland/Applications/Bits/LibBits/Net/PeerContext.h"
+#include "Userland/Applications/Bits/LibBits/Net/TorrentContext.h"
 #include <AK/NumberFormat.h>
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Model.h>

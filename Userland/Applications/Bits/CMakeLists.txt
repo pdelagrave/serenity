@@ -7,21 +7,20 @@ serenity_component(
 set(SOURCES
     BitsWidget.cpp
     main.cpp
-    BDecoder.cpp
-    BEncoder.cpp
-    MetaInfo.cpp
-    Torrent.cpp
+        LibBits/Bencode/BDecoder.cpp
+        LibBits/Bencode/BEncoder.cpp
+        LibBits/MetaInfo.cpp
+        LibBits/Torrent.cpp
     TorrentModel.cpp
-    Engine.cpp
-        Peer.cpp
-        TorrentDataFileMap.cpp
-        BitField.cpp
-        Data/Comm.cpp
-        Data/BitTorrentMessage.cpp
-        Data/PeerContext.cpp
+        LibBits/Engine.cpp
+        LibBits/TorrentDataFileMap.cpp
+        LibBits/BitField.cpp
+        LibBits/Net/Comm.cpp
+        LibBits/Net/BitTorrentMessage.cpp
+        LibBits/Net/PeerContext.cpp
         PeersTabWidget.cpp
-        Data/TorrentContext.cpp
-        BK/PieceHeap.cpp
+        LibBits/Net/TorrentContext.cpp
+        LibBits/Net/PieceHeap.cpp
         )
 
 serenity_app(Bits ICON hard-disk)

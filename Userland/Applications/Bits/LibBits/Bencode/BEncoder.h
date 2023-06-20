@@ -6,9 +6,9 @@
 
 #pragma once
 
+#include "AK/Stream.h"
+#include "AK/Types.h"
 #include "BDecoder.h"
-#include <AK/Stream.h>
-#include <AK/Types.h>
 namespace Bits {
 class BEncoder {
 public:

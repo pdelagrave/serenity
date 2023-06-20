@@ -6,15 +6,14 @@
 
 #pragma once
 
+#include "AK/NonnullOwnPtr.h"
+#include "BitField.h"
 #include "MetaInfo.h"
-#include "Peer.h"
 #include "TorrentDataFileMap.h"
-#include <AK/NonnullOwnPtr.h>
-#include <LibThreading/BackgroundAction.h>
+#include "Userland/Libraries/LibThreading/BackgroundAction.h"
 
 namespace Bits {
 
-class Peer;
 
 enum class TorrentState {
     ERROR,

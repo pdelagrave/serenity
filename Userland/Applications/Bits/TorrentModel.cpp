@@ -5,12 +5,12 @@
  */
 
 #include "TorrentModel.h"
-#include "Torrent.h"
-#include "Engine.h"
+#include "Userland/Applications/Bits/LibBits/Engine.h"
+#include "Userland/Applications/Bits/LibBits/Net/PeerContext.h"
+#include "Userland/Applications/Bits/LibBits/Net/PieceHeap.h"
+#include "Userland/Applications/Bits/LibBits/Net/TorrentContext.h"
+#include "Userland/Applications/Bits/LibBits/Torrent.h"
 #include <AK/NumberFormat.h>
-#include "Data/TorrentContext.h"
-#include "Data/PeerContext.h"
-#include "BK/PieceHeap.h"
 
 namespace Bits {
 

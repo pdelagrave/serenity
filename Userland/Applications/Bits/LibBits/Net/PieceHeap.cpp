@@ -5,8 +5,8 @@
  */
 
 #include "PieceHeap.h"
-#include "../Data/PeerContext.h"
-#include "../Data/TorrentContext.h"
+#include "Userland/Applications/Bits/LibBits/Net/PeerContext.h"
+#include "Userland/Applications/Bits/LibBits/Net/TorrentContext.h"
 
 namespace Bits::BK {
 
@@ -27,7 +27,7 @@ void PieceHeap::insert(PieceHeap::Value value)
         m_elements.empend(value);
     else
         m_elements[m_size - 1] = value;
-    
+
     value->index_in_heap = index;
     heapify_up(index);
 }

@@ -7,8 +7,8 @@
 #include "Comm.h"
 #include "BitTorrentMessage.h"
 #include "PeerContext.h"
-#include <LibCore/EventLoop.h>
-#include <LibCore/System.h>
+#include "Userland/Libraries/LibCore/EventLoop.h"
+#include "Userland/Libraries/LibCore/System.h"
 
 namespace Bits::Data {
 

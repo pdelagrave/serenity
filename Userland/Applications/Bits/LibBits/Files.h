@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <AK/DeprecatedString.h>
+#include "AK/DeprecatedString.h"
 
 namespace Bits {
 

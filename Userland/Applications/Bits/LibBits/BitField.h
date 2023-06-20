@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include <AK/ByteBuffer.h>
-#include <AK/Stream.h>
-#include <AK/Types.h>
+#include "AK/ByteBuffer.h"
+#include "AK/Stream.h"
+#include "AK/Types.h"
 
 namespace Bits {
 class BitField {

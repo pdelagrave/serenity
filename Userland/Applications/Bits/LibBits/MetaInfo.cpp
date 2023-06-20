@@ -5,9 +5,9 @@
  */
 
 #include "MetaInfo.h"
-#include "BDecoder.h"
-#include "BEncoder.h"
-#include <LibCrypto/Hash/HashManager.h>
+#include "Userland/Applications/Bits/LibBits/Bencode/BDecoder.h"
+#include "Userland/Applications/Bits/LibBits/Bencode/BEncoder.h"
+#include "Userland/Libraries/LibCrypto/Hash/HashManager.h"
 
 namespace Bits {
 

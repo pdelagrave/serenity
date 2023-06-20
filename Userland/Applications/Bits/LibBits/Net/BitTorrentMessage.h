@@ -6,13 +6,13 @@
 
 #pragma once
 
-#include "../BitField.h"
+#include "AK/ByteBuffer.h"
+#include "AK/DeprecatedString.h"
+#include "AK/Endian.h"
 #include "AK/MemoryStream.h"
-#include <AK/ByteBuffer.h>
-#include <AK/DeprecatedString.h>
-#include <AK/Endian.h>
-#include <AK/TypeCasts.h>
-#include <AK/Types.h>
+#include "AK/TypeCasts.h"
+#include "AK/Types.h"
+#include "Userland/Applications/Bits/LibBits/BitField.h"
 #include <initializer_list>
 
 namespace Bits::BitTorrent {

@@ -6,11 +6,11 @@
 
 #pragma once
 
-#include "BDecoder.h"
+#include "AK/DeprecatedString.h"
+#include "AK/Stream.h"
+#include "AK/URL.h"
 #include "Files.h"
-#include <AK/DeprecatedString.h>
-#include <AK/Stream.h>
-#include <AK/URL.h>
+#include "Userland/Applications/Bits/LibBits/Bencode/BDecoder.h"
 
 namespace Bits {
 

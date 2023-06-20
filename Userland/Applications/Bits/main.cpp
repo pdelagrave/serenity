@@ -5,7 +5,7 @@
  */
 
 #include "BitsWidget.h"
-#include "Engine.h"
+#include "Userland/Applications/Bits/LibBits/Engine.h"
 #include <LibCore/ArgsParser.h>
 #include <LibCore/System.h>
 #include <LibFileSystemAccessClient/Client.h>

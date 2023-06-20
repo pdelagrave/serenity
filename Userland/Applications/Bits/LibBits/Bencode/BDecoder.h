@@ -6,12 +6,12 @@
 
 #pragma once
 
-#include <AK/DeprecatedString.h>
-#include <AK/HashMap.h>
-#include <AK/MemoryStream.h>
-#include <AK/Stream.h>
-#include <AK/Variant.h>
-#include <AK/Vector.h>
+#include "AK/DeprecatedString.h"
+#include "AK/HashMap.h"
+#include "AK/MemoryStream.h"
+#include "AK/Stream.h"
+#include "AK/Variant.h"
+#include "AK/Vector.h"
 
 namespace Bits {
 struct List;
