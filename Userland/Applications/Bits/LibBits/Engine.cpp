@@ -42,7 +42,7 @@ HashMap<InfoHash, TorrentView> Engine::torrents()
             tview.state = torrent->state();
             tview.save_path = torrent->data_path();
         } else {
-            views.set(info_hash, TorrentView(info_hash, torrent->display_name(), torrent->meta_info().total_length(), torrent->state(), 0, 0, 0, torrent->data_path(), {}));
+            views.set(info_hash, TorrentView(info_hash, torrent->display_name(), torrent->meta_info().total_length(), torrent->state(), 0, 0, 0, torrent->data_path(), {}, {(u64)torrent->meta_info().total_length()}));
         }
     }
     return views;

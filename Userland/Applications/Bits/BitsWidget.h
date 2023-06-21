@@ -6,8 +6,9 @@
 
 #pragma once
 
-#include "PeersTabWidget.h"
+#include "Applications/Bits/Tabs/GeneralTorrentInfoWidget.h"
 #include "LibBits/Engine.h"
+#include "Userland/Applications/Bits/Tabs/PeersTabWidget.h"
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
 
@@ -53,6 +54,7 @@ private:
     RefPtr<Core::Timer> m_update_timer;
 
     RefPtr<GUI::TabWidget> m_bottom_tab_widget;
+    RefPtr<GeneralTorrentInfoWidget> m_general_widget;
     RefPtr<PeersTabWidget> m_peer_list_widget;
 
     NonnullRefPtr<Bits::Engine> m_engine;

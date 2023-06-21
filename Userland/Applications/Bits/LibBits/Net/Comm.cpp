@@ -163,7 +163,8 @@ void Comm::timer_event(Core::TimerEvent&)
                                         torrent->download_speed,
                                         torrent->upload_speed,
                                         "savepath", // FIXME bad abstraction
-                                        pviews
+                                        pviews,
+                                        torrent->local_bitfield
                                         ));
     }
 

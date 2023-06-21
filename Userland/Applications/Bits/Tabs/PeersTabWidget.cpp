@@ -5,9 +5,9 @@
  */
 
 #include "PeersTabWidget.h"
-#include <AK/NumberFormat.h>
-#include <LibGUI/BoxLayout.h>
-#include <LibGUI/Model.h>
+#include "AK/NumberFormat.h"
+#include "Userland/Libraries/LibGUI/BoxLayout.h"
+#include "Userland/Libraries/LibGUI/Model.h"
 
 class PeerListModel final : public GUI::Model {
 public:

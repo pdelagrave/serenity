@@ -6,52 +6,45 @@
 
 #pragma once
 
-#include <AK/Forward.h>
-#include <AK/Types.h>
-#include <AK/Format.h>
 #include <AK/DeprecatedString.h>
+#include <AK/Format.h>
+#include <AK/Forward.h>
 #include <AK/Span.h>
+#include <AK/Types.h>
 
 namespace Bits {
 
 template<size_t size>
 class FixedSizeByteString {
 public:
-    explicit FixedSizeByteString(const ReadonlyBytes &from_bytes) {
+    explicit FixedSizeByteString(ReadonlyBytes const& from_bytes)
+    {
         VERIFY(from_bytes.size() == size);
-        from_bytes.copy_to({m_data, size});
+        from_bytes.copy_to({ m_data, size });
     }
 
-    FixedSizeByteString(const FixedSizeByteString &other) {
+    FixedSizeByteString(FixedSizeByteString const& other)
+    {
         memcpy(m_data, other.m_data, size);
     }
 
     FixedSizeByteString() = delete;
-    [[nodiscard]] ReadonlyBytes bytes() const {
-        return {m_data, size};
-    }
-
-    [[nodiscard]] DeprecatedString to_escaped_ascii() const {
-        StringBuilder sb;
-        for (u8 c: m_data) {
-            if (c >= 32 && c <= 126) {
-                sb.append(c);
-            } else {
-                sb.appendff("\\x{:02X}", c);
-            }
-        }
-        return sb.to_deprecated_string();
+    [[nodiscard]] ReadonlyBytes bytes() const
+    {
+        return { m_data, size };
     }
 
     constexpr FixedSizeByteString& operator=(FixedSizeByteString const& other) = default;
 
     constexpr FixedSizeByteString& operator=(FixedSizeByteString&& other) = default;
 
-    constexpr bool operator==(FixedSizeByteString const &other) const {
+    constexpr bool operator==(FixedSizeByteString const& other) const
+    {
         return bytes() == other.bytes();
     }
 
-    constexpr bool operator==(ReadonlyBytes const &other) const {
+    constexpr bool operator==(ReadonlyBytes const& other) const
+    {
         return bytes() == other;
     }
 
@@ -65,15 +58,32 @@ using InfoHash = FixedSizeByteString<20>;
 }
 
 template<size_t size>
-struct AK::Formatter<Bits::FixedSizeByteString<size>> : AK::Formatter<StringView> {
-    ErrorOr<void> format(FormatBuilder &builder, Bits::FixedSizeByteString<size> const &value) {
-        return Formatter<StringView>::format(builder, DeprecatedString::formatted("{}", value.to_escaped_ascii()));
+struct AK::Formatter<Bits::FixedSizeByteString<size>> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, Bits::FixedSizeByteString<size> const& value)
+    {
+        for (u8 c : value.bytes())
+            TRY(Formatter<FormatString>::format(builder, "{:02X}"sv, c));
+    }
+};
+
+template<>
+struct AK::Formatter<Bits::PeerId> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, Bits::PeerId const& value)
+    {
+        for (u8 c : value.bytes()) {
+            if (c >= 32 && c <= 126)
+                TRY(Formatter<FormatString>::format(builder, "{:c}"sv, c));
+            else
+                TRY(Formatter<FormatString>::format(builder, "\\x{:02X}"sv, c));
+        }
+        return {};
     }
 };
 
 template<size_t size>
 struct AK::Traits<Bits::FixedSizeByteString<size>> : public GenericTraits<Bits::FixedSizeByteString<size>> {
-    static constexpr unsigned hash(Bits::FixedSizeByteString<size> const &string) {
-        return AK::Traits<Span<const u8>>::hash(string.bytes());
+    static constexpr unsigned hash(Bits::FixedSizeByteString<size> const& string)
+    {
+        return AK::Traits<Span<u8 const>>::hash(string.bytes());
     }
 };

@@ -38,6 +38,7 @@ struct TorrentView {
     u64 upload_speed;
     DeprecatedString save_path;
     Vector<PeerView> peers;
+    BitField bitfield;
 };
 
 }

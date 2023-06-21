@@ -5,7 +5,8 @@
  */
 
 #include "BitsWidget.h"
-#include "PeersTabWidget.h"
+#include "Applications/Bits/Tabs/GeneralTorrentInfoWidget.h"
+#include "Userland/Applications/Bits/Tabs/PeersTabWidget.h"
 #include <AK/NumberFormat.h>
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>
@@ -188,25 +189,37 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
 
     widget->m_bottom_tab_widget = main_splitter.add<GUI::TabWidget>();
     widget->m_bottom_tab_widget->set_preferred_height(14);
+    widget->m_general_widget = widget->m_bottom_tab_widget->add_tab<GeneralTorrentInfoWidget>("General"_string.release_value());
     widget->m_peer_list_widget = widget->m_bottom_tab_widget->add_tab<PeersTabWidget>("Peers"_string.release_value());
 
-    auto update_peer_tab_widget = [widget] {
+    auto selected_torrent = [widget]() -> Optional<Bits::TorrentView> {
         int selected_index = widget->m_torrents_table_view->selection().first().row();
-        Vector<Bits::PeerView> peers;
         if (selected_index >= 0)
-            peers = widget->m_torrent_model->torrent_at(selected_index).peers;
+            return widget->m_torrent_model->torrent_at(selected_index);
+        else
+            return {};
+    };
+
+    auto update_general_tab_widget = [widget, selected_torrent] {
+        widget->m_general_widget->update(selected_torrent());
+    };
+
+    auto update_peer_tab_widget = [widget, selected_torrent] {
+        auto peers = selected_torrent().map([&](auto torrent) -> auto { return torrent.peers; }).value_or({});
         widget->m_peer_list_widget->update(peers);
     };
 
-    widget->m_torrents_table_view->on_selection_change = [update_peer_tab_widget] {
+    widget->m_torrents_table_view->on_selection_change = [update_peer_tab_widget, update_general_tab_widget] {
+        update_general_tab_widget();
         update_peer_tab_widget();
     };
 
     widget->m_update_timer = widget->add<Core::Timer>(
-        500, [widget, update_peer_tab_widget] {
+        500, [widget, update_general_tab_widget, update_peer_tab_widget] {
             auto torrents = widget->m_engine->torrents();
             widget->m_torrent_model->update(torrents);
 
+            update_general_tab_widget();
             update_peer_tab_widget();
 
             u64 progress = 0;

@@ -17,8 +17,9 @@ set(SOURCES
     LibBits/MetaInfo.cpp
     LibBits/TorrentDataFileMap.cpp
     LibBits/Torrent.cpp
+    Tabs/GeneralTorrentInfoWidget.cpp
     BitsWidget.cpp
-    PeersTabWidget.cpp
+        Tabs/PeersTabWidget.cpp
     main.cpp
     )
 

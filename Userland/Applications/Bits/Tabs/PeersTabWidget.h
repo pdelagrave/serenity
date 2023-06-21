@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "LibBits/TorrentView.h"
-#include <LibGUI/TableView.h>
-#include <LibGUI/Widget.h>
+#include "Userland/Applications/Bits/LibBits/TorrentView.h"
+#include "Userland/Libraries/LibGUI/TableView.h"
+#include "Userland/Libraries/LibGUI/Widget.h"
 
 class PeersTabWidget : public GUI::Widget {
     C_OBJECT(PeersTabWidget)
