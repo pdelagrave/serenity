@@ -6,23 +6,15 @@
 
 #pragma once
 
-#include "BitsUiEvents.h"
+#include "LibBits/TorrentView.h"
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
-
-namespace Bits {
-struct TorrentContext;
-}
 
 class PeersTabWidget : public GUI::Widget {
     C_OBJECT(PeersTabWidget)
 public:
-    PeersTabWidget(Function<Optional<NonnullRefPtr<Bits::TorrentContext>>()> get_current_torrent);
-    void refresh();
-protected:
-    void custom_event(Core::CustomEvent& event) override;
+    PeersTabWidget();
+    void update(Vector<Bits::PeerView>);
 private:
-    void set_torrent(Optional<NonnullRefPtr<Bits::TorrentContext>> torrent);
-    Function<Optional<NonnullRefPtr<Bits::TorrentContext>>()> m_get_current_torrent;
-    RefPtr<GUI::TableView> m_peers_view;
+    RefPtr<GUI::TableView> m_peers_table_view;
 };

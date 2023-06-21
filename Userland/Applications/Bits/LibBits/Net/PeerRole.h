@@ -6,6 +6,9 @@
 
 #pragma once
 
-enum BitsUiEvents {
-    TorrentSelected
+namespace Bits {
+enum PeerRole {
+    Client,
+    Server
 };
+}

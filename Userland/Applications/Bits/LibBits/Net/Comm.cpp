@@ -7,8 +7,7 @@
 #include "Comm.h"
 #include "BitTorrentMessage.h"
 #include "PeerContext.h"
-#include "Userland/Libraries/LibCore/EventLoop.h"
-#include "Userland/Libraries/LibCore/System.h"
+#include <LibCore/System.h>
 
 namespace Bits {
 
@@ -36,26 +35,12 @@ Comm::Comm()
         }
 
         gettimeofday(&m_last_speed_measurement, nullptr);
-        start_timer(3000);
+        start_timer(1000);
         return m_event_loop->exec();
     },
         "Comm thread"sv);
 
     m_thread->start();
-}
-
-void Comm::add_peers(ReadonlyBytes info_hash, Vector<Core::SocketAddress> peers)
-{
-    m_event_loop->deferred_invoke([this, info_hash, peers] {
-        auto torrent = m_torrent_contexts.get(info_hash).value();
-        for (auto const& peer_address : peers) {
-            // TODO algo for dupes, deleted (tracker announce doesn't return one anymore and we're downloading/uploading from it?)
-            auto peer = make_ref_counted<PeerContext>(*torrent, peer_address);
-            // assuming peers are added only once
-            torrent->all_peers.set(move(peer));
-        }
-        connect_more_peers(*torrent);
-    });
 }
 
 void Comm::activate_torrent(NonnullRefPtr<TorrentContext> torrent)
@@ -69,7 +54,7 @@ void Comm::activate_torrent(NonnullRefPtr<TorrentContext> torrent)
     });
 }
 
-void Comm::deactivate_torrent(ReadonlyBytes info_hash)
+void Comm::deactivate_torrent(InfoHash info_hash)
 {
     m_event_loop->deferred_invoke([this, info_hash] {
         // TODO make sure add_peers can't and won't be called during deactivation
@@ -82,24 +67,30 @@ void Comm::deactivate_torrent(ReadonlyBytes info_hash)
     });
 }
 
-Optional<NonnullRefPtr<TorrentContext>> Comm::get_torrent_context(ReadonlyBytes info_hash)
+void Comm::add_peers(InfoHash info_hash, Vector<Core::SocketAddress> peers)
 {
-    auto x = m_torrent_contexts.get(info_hash);
-    if (!x.has_value())
-        return {};
-    return *x.value();
+    m_event_loop->deferred_invoke([this, info_hash, peers] {
+        auto torrent = m_torrent_contexts.get(info_hash).value();
+        for (auto const& peer_address : peers) {
+            // TODO algo for dupes, deleted (tracker announce doesn't return one anymore and we're downloading/uploading from it?)
+            auto peer = make_ref_counted<PeerContext>(*torrent, peer_address);
+            // assuming peers are added only once
+            torrent->all_peers.set(move(peer));
+        }
+        connect_more_peers(*torrent);
+    });
 }
 
-Vector<NonnullRefPtr<TorrentContext>> Comm::get_torrent_contexts()
+HashMap<InfoHash, TorrentView> Comm::state_snapshot()
 {
-    Vector<NonnullRefPtr<TorrentContext>> torrents;
-    for (auto& torrent : m_torrent_contexts)
-        torrents.append(torrent.value);
-    return torrents;
+    Threading::MutexLocker locker(m_state_snapshot_lock);
+    return m_state_snapshot;
 }
 
 void Comm::timer_event(Core::TimerEvent&)
 {
+    //TODO clean this up, put each in their own method, also make it so that we can have different intervals
+
     // Transfer speed measurement
     timeval current_time;
     timeval time_diff;
@@ -141,6 +132,43 @@ void Comm::timer_event(Core::TimerEvent&)
             }
         }
     }
+
+    // State snapshot
+    HashMap<InfoHash, TorrentView> new_snapshot;
+    for (auto const& [info_hash, torrent] : m_torrent_contexts) {
+        Vector<PeerView> pviews;
+        pviews.ensure_capacity(torrent->all_peers.size());
+        for (auto const& peer : torrent->all_peers) {
+            pviews.append(PeerView(
+                peer->id,
+                peer->address.ipv4_address().to_deprecated_string(),
+                peer->address.port(),
+                peer->bitfield.progress(),
+                peer->connected ? peer->connection->download_speed : 0,
+                peer->connected ? peer->connection->upload_speed : 0,
+                peer->we_are_choking_peer,
+                peer->peer_is_choking_us,
+                peer->we_are_interested_in_peer,
+                peer->peer_is_interested_in_us,
+                peer->connected ? peer->connection->role : PeerRole::Server
+                ));
+        }
+        new_snapshot.set(info_hash, TorrentView(
+                                        info_hash,
+                                        "displayname", // FIXME bad abstraction
+                                        torrent->total_length,
+                                        TorrentState::STARTED, // FIXME bad abstraction
+                                        torrent->local_bitfield.progress(),
+                                        torrent->download_speed,
+                                        torrent->upload_speed,
+                                        "savepath", // FIXME bad abstraction
+                                        pviews
+                                        ));
+    }
+
+    m_state_snapshot_lock.lock();
+    m_state_snapshot = new_snapshot;
+    m_state_snapshot_lock.unlock();
 }
 
 ErrorOr<void> Comm::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerContext> peer)
@@ -504,7 +532,7 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<PeerConnection> connection)
                 auto handshake = TRY(HandshakeMessage::try_create(message_byte_stream));
                 dbglnc("Received handshake: {}", handshake->to_string());
 
-                auto remote_info_hash = Bytes { handshake->info_hash, 20 };
+                auto remote_info_hash = InfoHash({handshake->info_hash, 20});
                 if (!m_torrent_contexts.contains(remote_info_hash)) {
                     dbglnc("Peer sent a handshake with an unknown info hash.");
                     // TODO set_peer_errored
@@ -679,7 +707,7 @@ ErrorOr<void> Comm::connect_to_peer(NonnullRefPtr<PeerContext> peer)
 
     auto socket = TRY(Core::TCPSocket::adopt_fd(socket_fd));
     NonnullRefPtr<Core::Notifier> write_notifier = Core::Notifier::construct(socket_fd, Core::Notifier::Type::Write);
-    auto connection = TRY(PeerConnection::try_create(socket, write_notifier, 5 * MiB, 5 * MiB));
+    auto connection = TRY(PeerConnection::try_create(socket, write_notifier, 5 * MiB, 5 * MiB, PeerRole::Server));
 
     write_notifier->on_activation = [&, socket_fd, connection, peer] {
         m_peer_context_stack.append(peer);
@@ -734,7 +762,7 @@ ErrorOr<void> Comm::connect_to_peer(NonnullRefPtr<PeerContext> peer)
     return {};
 }
 
-ErrorOr<void> Comm::send_handshake(ReadonlyBytes info_hash, ReadonlyBytes local_peer_id, NonnullRefPtr<PeerConnection> connection)
+ErrorOr<void> Comm::send_handshake(InfoHash info_hash, PeerId local_peer_id, NonnullRefPtr<PeerConnection> connection)
 {
     auto handshake = HandshakeMessage(info_hash, local_peer_id);
     dbglnc("Sending handshake: {}", handshake.to_string());
@@ -798,7 +826,7 @@ ErrorOr<void> Comm::on_ready_to_accept()
     TRY(accepted->set_blocking(false));
 
     NonnullRefPtr<Core::Notifier> write_notifier = Core::Notifier::construct(accepted->fd(), Core::Notifier::Type::Write);
-    auto connection = TRY(PeerConnection::try_create(accepted, write_notifier, 5 * MiB, 5 * MiB));
+    auto connection = TRY(PeerConnection::try_create(accepted, write_notifier, 5 * MiB, 5 * MiB, PeerRole::Client));
     m_accepted_connections.set(connection);
 
     write_notifier->on_activation = [&, connection] {

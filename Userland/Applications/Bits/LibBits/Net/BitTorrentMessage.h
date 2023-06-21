@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "../FixedSizeByteString.h"
 #include "AK/ByteBuffer.h"
 #include "AK/DeprecatedString.h"
 #include "AK/Endian.h"
@@ -133,15 +134,13 @@ struct HandshakeMessage {
     u8 info_hash[20];
     u8 peer_id[20];
 
-    HandshakeMessage(ReadonlyBytes info_hash, ReadonlyBytes peer_id)
+    HandshakeMessage(InfoHash info_hash, PeerId peer_id)
         : pstrlen(19)
     {
-        VERIFY(info_hash.size() == 20);
-        VERIFY(peer_id.size() == 20);
         memcpy(pstr, "BitTorrent protocol", 19);
         memset(reserved, 0, 8);
-        memcpy(this->info_hash, info_hash.data(), 20);
-        memcpy(this->peer_id, peer_id.data(), 20);
+        memcpy(this->info_hash, info_hash.bytes().data(), 20);
+        memcpy(this->peer_id, peer_id.bytes().data(), 20);
     }
 
     HandshakeMessage() = default;

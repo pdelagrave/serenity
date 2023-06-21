@@ -38,7 +38,6 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
     window->resize(800, 600);
 
     auto engine = TRY(Bits::Engine::try_create(skip_checking, assume_valid_when_skip_checking));
-    Bits::Engine::s_engine = engine.ptr();
 
     auto bits_widget = TRY(BitsWidget::create(engine, window));
     window->set_main_widget(bits_widget);

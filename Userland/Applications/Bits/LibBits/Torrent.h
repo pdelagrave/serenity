@@ -22,6 +22,7 @@ enum class TorrentState {
     STARTED,
     SEEDING
 };
+
 ErrorOr<String> state_to_string(TorrentState state);
 
 class Torrent : public RefCounted<Torrent> {

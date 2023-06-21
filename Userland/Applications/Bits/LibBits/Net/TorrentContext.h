@@ -12,16 +12,17 @@
 
 #include "AK/NonnullRefPtr.h"
 #include "AK/RefCounted.h"
+#include "Applications/Bits/LibBits/FixedSizeByteString.h"
 
 namespace Bits {
 
 struct PeerContext;
 
 struct TorrentContext : RefCounted<TorrentContext> {
-    TorrentContext(ReadonlyBytes info_hash, ReadonlyBytes local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port, BitField local_bitfield, NonnullOwnPtr<TorrentDataFileMap> data_file_map);
+    TorrentContext(InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port, BitField local_bitfield, NonnullOwnPtr<TorrentDataFileMap> data_file_map);
 
-    const ReadonlyBytes info_hash;
-    const ReadonlyBytes local_peer_id;
+    const InfoHash info_hash;
+    const PeerId local_peer_id;
     const u64 piece_count;
     const u64 nominal_piece_length; // Is "nominal" used correctly here?
     const u64 total_length;

@@ -5,19 +5,12 @@
  */
 
 #include "PeersTabWidget.h"
-#include "Userland/Applications/Bits/LibBits/Net/PeerContext.h"
-#include "Userland/Applications/Bits/LibBits/Net/TorrentContext.h"
 #include <AK/NumberFormat.h>
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Model.h>
 
 class PeerListModel final : public GUI::Model {
 public:
-    explicit PeerListModel(Optional<NonnullRefPtr<Bits::TorrentContext>> torrent)
-    {
-        set_torrent(torrent);
-    }
-
     enum Column {
         IP,
         Port,
@@ -72,70 +65,50 @@ public:
         if (role == GUI::ModelRole::TextAlignment)
             return Gfx::TextAlignment::CenterLeft;
         if (role == GUI::ModelRole::Display) {
-            //            dbgln("index.column(): {} m_peers.size(): {}", index.column(), m_peers.size());
             auto& peer = m_peers.at(index.row());
             switch (index.column()) {
             case Column::IP:
-                return peer->address.ipv4_address().to_deprecated_string();
+                return peer.ip;
             case Column::Port:
-                return peer->address.port();
+                return peer.port;
             case Column::Progress:
-                return DeprecatedString::formatted("{:.1}%", peer->bitfield.progress());
+                return DeprecatedString::formatted("{:.1}%", peer.progress);
             case Column::DownloadSpeed:
-                return DeprecatedString::formatted("{}/s", human_readable_size(peer->connection->download_speed));
+                return DeprecatedString::formatted("{}/s", human_readable_size(peer.download_speed));
             case Column::UploadSpeed:
-                return DeprecatedString::formatted("{}/s", human_readable_size(peer->connection->upload_speed));
+                return DeprecatedString::formatted("{}/s", human_readable_size(peer.upload_speed));
             case Column::IsChokedByUs:
-                return peer->we_are_choking_peer;
+                return peer.we_choking_it;
             case Column::IsChokingUs:
-                return peer->peer_is_choking_us;
+                return peer.it_choking_us;
             case Column::IsInterestedByUs:
-                return peer->peer_is_interested_in_us;
+                return peer.it_interested;
             case Column::IsInterestingToUs:
-                return peer->we_are_interested_in_peer;
+                return peer.we_interested;
             }
         }
         return {};
     }
 
-    void update()
+    void update(Vector<Bits::PeerView> peers)
     {
-        m_peers = m_tcontext.map([](auto tcontext) { return tcontext->connected_peers.values(); }).value_or({});
+        m_peers = move(peers);
         did_update(UpdateFlag::DontInvalidateIndices);
     }
 
-    void set_torrent(Optional<NonnullRefPtr<Bits::TorrentContext>> tcontext)
-    {
-        m_tcontext = tcontext;
-        update();
-    }
-
 private:
-    Optional<NonnullRefPtr<Bits::TorrentContext>> m_tcontext;
-    Vector<NonnullRefPtr<Bits::PeerContext>> m_peers;
+    Vector<Bits::PeerView> m_peers;
 };
 
-PeersTabWidget::PeersTabWidget(Function<Optional<NonnullRefPtr<Bits::TorrentContext>>()> get_current_torrent)
-    : m_get_current_torrent(move(get_current_torrent))
+PeersTabWidget::PeersTabWidget()
 {
     set_layout<GUI::VerticalBoxLayout>();
-    m_peers_view = add<GUI::TableView>();
-    m_peers_view->set_model(make_ref_counted<PeerListModel>(m_get_current_torrent()));
+    m_peers_table_view = add<GUI::TableView>();
+    m_peers_table_view->set_model(make_ref_counted<PeerListModel>());
 }
 
-void PeersTabWidget::refresh()
+void PeersTabWidget::update(Vector<Bits::PeerView> peers)
 {
-    static_cast<PeerListModel*>(m_peers_view->model())->update();
+    static_cast<PeerListModel*>(m_peers_table_view->model())->update(peers);
 }
 
-void PeersTabWidget::custom_event(Core::CustomEvent& event)
-{
-    if (event.custom_type() == BitsUiEvents::TorrentSelected) {
-        set_torrent(m_get_current_torrent());
-    }
-}
-
-void PeersTabWidget::set_torrent(Optional<NonnullRefPtr<Bits::TorrentContext>> torrent)
-{
-    static_cast<PeerListModel*>(m_peers_view->model())->set_torrent(torrent);
-}

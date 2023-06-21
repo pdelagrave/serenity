@@ -8,6 +8,7 @@
 
 #include "AK/RefCounted.h"
 #include "BitTorrentMessage.h"
+#include "PeerRole.h"
 #include "Userland/Libraries/LibCore/DateTime.h"
 #include "Userland/Libraries/LibCore/Socket.h"
 
@@ -16,7 +17,7 @@ namespace Bits {
 struct TorrentContext;
 
 struct PeerConnection : public RefCounted<PeerConnection> {
-    static ErrorOr<NonnullRefPtr<PeerConnection>> try_create(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier> write_notifier, size_t input_buffer_size, size_t output_buffer_size);
+    static ErrorOr<NonnullRefPtr<PeerConnection>> try_create(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier> write_notifier, size_t input_buffer_size, size_t output_buffer_size, PeerRole);
 
     NonnullOwnPtr<Core::TCPSocket> socket;
     NonnullRefPtr<Core::Notifier> socket_writable_notifier;
@@ -24,8 +25,9 @@ struct PeerConnection : public RefCounted<PeerConnection> {
     CircularBuffer input_message_buffer;
     CircularBuffer output_message_buffer;
 
-    BigEndian<u32> incoming_message_length = sizeof(HandshakeMessage);
+    PeerRole role;
 
+    BigEndian<u32> incoming_message_length = sizeof(HandshakeMessage);
     Core::DateTime last_message_received_at;
     Core::DateTime last_message_sent_at;
 
@@ -39,7 +41,7 @@ struct PeerConnection : public RefCounted<PeerConnection> {
     bool handshake_sent { false };
 
 private:
-    PeerConnection(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier>& write_notifier, CircularBuffer& input_message_buffer, CircularBuffer& output_message_buffer);
+    PeerConnection(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier>& write_notifier, CircularBuffer& input_message_buffer, CircularBuffer& output_message_buffer, PeerRole);
 };
 
 struct PeerContext : public RefCounted<PeerContext> {
@@ -71,6 +73,7 @@ struct PeerContext : public RefCounted<PeerContext> {
     } incoming_piece;
 
     RefPtr<PeerConnection> connection;
+    PeerId id;
 };
 
 }

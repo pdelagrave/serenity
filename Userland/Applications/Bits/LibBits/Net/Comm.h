@@ -6,11 +6,13 @@
 
 #pragma once
 
-#include "AK/Stack.h"
+#include "../TorrentView.h"
+#include "LibThreading/Mutex.h"
 #include "PeerContext.h"
 #include "TorrentContext.h"
-#include "Userland/Libraries/LibCore/TCPServer.h"
-#include "Userland/Libraries/LibThreading/Thread.h"
+#include <AK/Stack.h>
+#include <LibCore/TCPServer.h>
+#include <LibThreading/Thread.h>
 
 namespace Bits {
 
@@ -20,10 +22,9 @@ class Comm : public Core::Object {
 public:
     Comm();
     void activate_torrent(NonnullRefPtr<TorrentContext> torrent);
-    void deactivate_torrent(ReadonlyBytes info_hash);
-    void add_peers(ReadonlyBytes info_hash, Vector<Core::SocketAddress> peers);
-    Optional<NonnullRefPtr<TorrentContext>> get_torrent_context(ReadonlyBytes);
-    Vector<NonnullRefPtr<TorrentContext>> get_torrent_contexts();
+    void deactivate_torrent(InfoHash info_hash);
+    void add_peers(InfoHash info_hash, Vector<Core::SocketAddress> peers);
+    HashMap<InfoHash, TorrentView> state_snapshot();
 
     const u16 max_total_connections = 100;
     const u16 max_connections_per_torrent = 10;
@@ -41,8 +42,10 @@ private:
     RefPtr<Threading::Thread> m_thread;
     NonnullRefPtr<Core::TCPServer> m_server;
 
-    HashMap<ReadonlyBytes, NonnullRefPtr<TorrentContext>> m_torrent_contexts;
+    HashMap<InfoHash, NonnullRefPtr<TorrentContext>> m_torrent_contexts;
     timeval m_last_speed_measurement;
+    HashMap<InfoHash, TorrentView> m_state_snapshot;
+    Threading::Mutex m_state_snapshot_lock;
 
     // BT higher level logic
     ErrorOr<void> piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerContext> peer);
@@ -67,7 +70,7 @@ private:
     ErrorOr<void> flush_output_buffer(NonnullRefPtr<PeerConnection> connection);
     void connect_more_peers(NonnullRefPtr<TorrentContext>);
     ErrorOr<void> connect_to_peer(NonnullRefPtr<PeerContext> pcontext);
-    ErrorOr<void> send_handshake(ReadonlyBytes info_hash, ReadonlyBytes local_peer_id, NonnullRefPtr<PeerConnection> connection);
+    ErrorOr<void> send_handshake(InfoHash info_hash, PeerId local_peer_id, NonnullRefPtr<PeerConnection> connection);
     void set_peer_errored(NonnullRefPtr<PeerContext> peer, bool should_connect_more_peers = true);
     void close_connection(NonnullRefPtr<PeerConnection> connection);
     u64 get_available_peers_count(NonnullRefPtr<TorrentContext> torrent) const;

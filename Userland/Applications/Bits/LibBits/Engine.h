@@ -6,7 +6,9 @@
 
 #pragma once
 
+#include "FixedSizeByteString.h"
 #include "Torrent.h"
+#include "TorrentView.h"
 #include "Userland/Applications/Bits/LibBits/Net/Comm.h"
 #include "Userland/Libraries/LibCore/Object.h"
 #include "Userland/Libraries/LibProtocol/RequestClient.h"
@@ -17,20 +19,14 @@ class Engine : public Core::Object {
     C_OBJECT(Engine);
 
 public:
-    inline static Bits::Engine* s_engine;
     static ErrorOr<NonnullRefPtr<Engine>> try_create(bool skip_checking, bool assume_valid);
     ~Engine();
 
-    Vector<NonnullRefPtr<Torrent>> torrents() { return m_torrents; }
     void add_torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
-    Optional<NonnullRefPtr<TorrentContext>> get_torrent_context(ReadonlyBytes);
-    Vector<NonnullRefPtr<TorrentContext>> get_torrent_contexts();
-    void start_torrent(int);
-    void stop_torrent(int);
-    void cancel_checking(int);
-
-protected:
-    virtual void timer_event(Core::TimerEvent&) override;
+    HashMap<InfoHash, TorrentView> torrents();
+    void start_torrent(InfoHash info_hash);
+    void stop_torrent(InfoHash);
+    void cancel_checking(InfoHash);
 
 private:
     Engine(NonnullRefPtr<Protocol::RequestClient>, bool skip_checking, bool assume_valid);
@@ -40,7 +36,7 @@ private:
     NonnullRefPtr<Protocol::RequestClient> m_protocol_client;
     HashTable<NonnullRefPtr<Protocol::Request>> m_active_requests;
 
-    Vector<NonnullRefPtr<Torrent>> m_torrents;
+    HashMap<InfoHash, NonnullRefPtr<Torrent>> m_torrents;
     ErrorOr<void> announce(Torrent& torrent, Function<void(Vector<Core::SocketAddress>)> on_complete);
 
     Comm comm;

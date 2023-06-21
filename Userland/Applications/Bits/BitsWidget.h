@@ -7,37 +7,21 @@
 #pragma once
 
 #include "PeersTabWidget.h"
-#include "Userland/Applications/Bits/LibBits/Engine.h"
-#include "Userland/Applications/Bits/LibBits/Torrent.h"
+#include "LibBits/Engine.h"
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
 
-namespace Bits {
-struct PeerContext;
-struct TorrentContext;
-struct PieceStatus;
-class PieceHeap;
-}
-
-using TorrentListCallback = Function<Vector<NonnullRefPtr<Bits::TorrentContext>>()>;
-
 class TorrentModel final : public GUI::Model {
 public:
-    int row_count(GUI::ModelIndex const& index) const override;
-    int column_count(GUI::ModelIndex const& index) const override;
-    GUI::Variant data(GUI::ModelIndex const& index, GUI::ModelRole role) const override;
-    String column_name(int i) const override;
+    virtual int column_count(GUI::ModelIndex const& index= GUI::ModelIndex()) const override;
+    virtual String column_name(int i) const override;
+    virtual GUI::Variant data(GUI::ModelIndex const& index, GUI::ModelRole role) const override;
+    virtual int row_count(GUI::ModelIndex const& index = GUI::ModelIndex()) const override;
 
-    static NonnullRefPtr<TorrentModel> create(TorrentListCallback callback)
-    {
-        return adopt_ref(*new TorrentModel(move(callback)));
-    }
-    void update();
+    Bits::TorrentView torrent_at(int index) const;
+    void update(HashMap<Bits::InfoHash, Bits::TorrentView>);
 
 private:
-    TorrentModel(TorrentListCallback callback)
-        : m_get_updated_torrent_list(move(callback)) {};
-
     enum Column {
         Name,
         Size,
@@ -49,8 +33,8 @@ private:
         __Count
     };
 
-    TorrentListCallback m_get_updated_torrent_list;
-    Vector<NonnullRefPtr<Bits::TorrentContext>> m_torrents;
+    HashMap<Bits::InfoHash, Bits::TorrentView> m_torrents;
+    Vector<Bits::InfoHash> m_hashes;
 };
 
 class BitsWidget final : public GUI::Widget {

@@ -9,7 +9,7 @@
 
 namespace Bits {
 
-TorrentContext::TorrentContext(ReadonlyBytes info_hash, ReadonlyBytes local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port, BitField local_bitfield, NonnullOwnPtr<TorrentDataFileMap> data_file_map)
+TorrentContext::TorrentContext(InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port, BitField local_bitfield, NonnullOwnPtr<TorrentDataFileMap> data_file_map)
     : info_hash(info_hash)
     , local_peer_id(local_peer_id)
     , piece_count(ceil_div(total_length, nominal_piece_length))

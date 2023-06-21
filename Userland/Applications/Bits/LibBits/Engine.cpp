@@ -27,22 +27,25 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
     }
 
     NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(local_files), root_data_path);
-    m_torrents.append(move(torrent));
+    auto info_hash = InfoHash({ torrent->meta_info().info_hash() });
+    m_torrents.set(info_hash, move(torrent));
 }
 
-Optional<NonnullRefPtr<TorrentContext>> Engine::get_torrent_context(ReadonlyBytes info_hash)
+HashMap<InfoHash, TorrentView> Engine::torrents()
 {
-    return comm.get_torrent_context(info_hash);
-}
-
-void Engine::timer_event(Core::TimerEvent&)
-{
-    // state is DOWNLOADING?
-    // schedule more pieces to download.
-    // if we don't have enough peers to schedule more pieces for download, connect to more peers, get their bitfield and this will run again and maybe use them.
-    //
-
-    // todo use a priorityqueue to store the next piece to download, fill and update that queue based on the bitfield of every peer, the pop operation will return the rarest piece.
+    auto views = comm.state_snapshot();
+    for (auto const& [info_hash, torrent] : m_torrents) {
+        auto maybe_view = views.get(info_hash);
+        if (maybe_view.has_value()) {
+            auto& tview = maybe_view.release_value();
+            tview.display_name = torrent->display_name();
+            tview.state = torrent->state();
+            tview.save_path = torrent->data_path();
+        } else {
+            views.set(info_hash, TorrentView(info_hash, torrent->display_name(), torrent->meta_info().total_length(), torrent->state(), 0, 0, 0, torrent->data_path(), {}));
+        }
+    }
+    return views;
 }
 
 ErrorOr<void> Engine::create_file(const AK::DeprecatedString& absolute_path)
@@ -108,13 +111,10 @@ ErrorOr<void> Engine::create_file(const AK::DeprecatedString& absolute_path)
     return {};
 }
 
-void Engine::start_torrent(int torrent_id)
+void Engine::start_torrent(InfoHash info_hash)
 {
-    deferred_invoke([this, torrent_id]() {
-        auto torrent = m_torrents.at(torrent_id);
-        // 1. check if files are there, if not create them
-        // 2. read the files and update the bytes already downloaded, how much data we have, so we know if we should start connecting to peers to download the rest.
-
+    deferred_invoke([this, info_hash]() {
+        auto torrent = m_torrents.get(info_hash).value();
         torrent->set_state(TorrentState::CHECKING);
 
         for (auto local_file : *torrent->local_files()) {
@@ -141,7 +141,6 @@ void Engine::start_torrent(int torrent_id)
             f->close();
         }
 
-        auto info_hash = torrent->meta_info().info_hash();
         torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent, info_hash, origin_event_loop = &Core::EventLoop::current()](BitField local_bitfield) {
             // Checking finished callback, still on the background thread
             torrent->set_state(TorrentState::STARTED);
@@ -150,7 +149,7 @@ void Engine::start_torrent(int torrent_id)
                 dbgln("we have {}/{} pieces", local_bitfield.ones(), torrent->piece_count());
 
                 auto tcontext = make_ref_counted<TorrentContext>(info_hash,
-                    torrent->local_peer_id(),
+                    PeerId(torrent->local_peer_id()),
                     (u64)torrent->meta_info().total_length(),
                     (u64)torrent->meta_info().piece_length(),
                     torrent->local_port(),
@@ -158,7 +157,7 @@ void Engine::start_torrent(int torrent_id)
                     torrent->data_file_map().release_nonnull());
                 comm.activate_torrent(tcontext);
 
-                announce(torrent, [this, tcontext, info_hash](auto peers) {
+                announce(*torrent, [this, tcontext, info_hash](auto peers) {
                     // announce finished callback, now on the UI loop/thread
                     // TODO: if we seed, we don't add peers.
                     dbgln("Peers from tracker:");
@@ -173,15 +172,14 @@ void Engine::start_torrent(int torrent_id)
     });
 }
 
-void Engine::stop_torrent(int torrent_id)
+void Engine::stop_torrent(InfoHash info_hash)
 {
-    dbgln("stop_torrent({})", torrent_id);
-    comm.deactivate_torrent(m_torrents.at(torrent_id)->meta_info().info_hash());
+    comm.deactivate_torrent(info_hash);
 }
 
-void Engine::cancel_checking(int torrent_id)
+void Engine::cancel_checking(InfoHash info_hash)
 {
-    auto torrent = m_torrents.at(torrent_id);
+    auto torrent = m_torrents.get(info_hash).value();
     torrent->cancel_checking();
     torrent->set_state(TorrentState::STOPPED);
 }
@@ -265,20 +263,15 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
 Engine::~Engine()
 {
     dbgln("Engine::~Engine()");
-    for (auto torrent : m_torrents) {
-        torrent->cancel_checking();
-    }
-    m_torrents.clear();
+//    for (auto torrent : m_torrents) {
+//        torrent->cancel_checking();
+//    }
+//    m_torrents.clear();
 }
-
 ErrorOr<NonnullRefPtr<Engine>> Engine::try_create(bool skip_checking, bool assume_valid)
 {
     auto protocol_client = TRY(Protocol::RequestClient::try_create());
     return adopt_nonnull_ref_or_enomem(new (nothrow) Engine(move(protocol_client), skip_checking, assume_valid));
-}
-Vector<NonnullRefPtr<TorrentContext>> Engine::get_torrent_contexts()
-{
-    return comm.get_torrent_contexts();
 }
 
 }
