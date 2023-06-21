@@ -110,9 +110,9 @@ public:
     {
     }
 
-    BitFieldMessage(SeekableStream& stream)
+    BitFieldMessage(SeekableStream& stream, u64 size)
         : Message(stream)
-        , bitfield(stream.read_value<BitField>().release_value_but_fixme_should_propagate_errors())
+        , bitfield(BitField::read_from_stream(stream, size).release_value_but_fixme_should_propagate_errors())
     {
     }
     const BitField bitfield;

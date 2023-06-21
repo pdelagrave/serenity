@@ -12,6 +12,8 @@
 class PeerListModel final : public GUI::Model {
 public:
     enum Column {
+        Connected,
+        Role,
         IP,
         Port,
         Progress,
@@ -37,6 +39,10 @@ public:
     virtual String column_name(int column) const override
     {
         switch (column) {
+        case Column::Connected:
+            return "Connected"_string.release_value();
+        case Column::Role:
+            return "Role"_string.release_value();
         case Column::IP:
             return "IP"_short_string;
         case Column::Port:
@@ -67,6 +73,10 @@ public:
         if (role == GUI::ModelRole::Display) {
             auto& peer = m_peers.at(index.row());
             switch (index.column()) {
+            case Column::Connected:
+                return peer.connected;
+            case Column::Role:
+                return peer.role == Bits::Client ? "Client" : "Server";
             case Column::IP:
                 return peer.ip;
             case Column::Port:

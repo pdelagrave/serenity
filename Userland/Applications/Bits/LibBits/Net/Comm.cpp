@@ -150,7 +150,8 @@ void Comm::timer_event(Core::TimerEvent&)
                 peer->peer_is_choking_us,
                 peer->we_are_interested_in_peer,
                 peer->peer_is_interested_in_us,
-                peer->connected ? peer->connection->role : PeerRole::Server
+                peer->connected ? peer->connection->role : PeerRole::Server,
+                peer->connected
                 ));
         }
         new_snapshot.set(info_hash, TorrentView(
@@ -208,8 +209,8 @@ ErrorOr<void> Comm::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPt
                 if (connected_peer->bitfield.progress() == 100)
                     set_peer_errored(connected_peer, false);
             }
-            // TODO: Have the engine monitor for status and do the deactivation
-            // deactivate_torrent(torrent->info_hash);
+
+            on_torrent_download_completed(torrent->info_hash);
             return {};
         }
     } else {
@@ -300,12 +301,10 @@ ErrorOr<void> Comm::parse_input_message(SeekableStream& stream, NonnullRefPtr<Pe
 {
     using MessageType = Bits::Message::Type;
     auto message_type = TRY(stream.read_value<MessageType>());
-    TRY(stream.seek(0, AK::SeekMode::SetPosition));
 
     dbglnc("Got message type {}", Bits::Message::to_string(message_type));
 
     peer->connection->last_message_received_at = Core::DateTime::now();
-
     peer->connection->incoming_message_length = 0;
 
     switch (message_type) {
@@ -327,7 +326,7 @@ ErrorOr<void> Comm::parse_input_message(SeekableStream& stream, NonnullRefPtr<Pe
         TRY(handle_have(make<HaveMessage>(stream), peer));
         break;
     case MessageType::Bitfield:
-        TRY(handle_bitfield(make<BitFieldMessage>(stream), peer));
+        TRY(handle_bitfield(make<BitFieldMessage>(stream, peer->torrent_context->piece_count), peer));
         break;
     case MessageType::Request:
         TRY(handle_request(make<RequestMessage>(stream), peer));
@@ -348,7 +347,7 @@ ErrorOr<void> Comm::parse_input_message(SeekableStream& stream, NonnullRefPtr<Pe
 ErrorOr<void> Comm::handle_bitfield(NonnullOwnPtr<BitFieldMessage> bitfield, NonnullRefPtr<PeerContext> peer)
 {
     peer->bitfield = bitfield->bitfield;
-    dbglnc("Set bitfield for peer. size: {} data_size: {}", peer->bitfield.size(), peer->bitfield.data_size());
+    dbglnc("Receiving BitField from peer: {}", peer->bitfield);
 
     bool interesting = false;
     auto torrent = peer->torrent_context;
@@ -441,12 +440,8 @@ ErrorOr<void> Comm::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, Nonn
     if (piece.offset == (size_t)piece.length) {
         m_event_loop->deferred_invoke([this, index, peer, bytes = piece.data.bytes()] {
             m_peer_context_stack.append(peer);
-            auto err = piece_downloaded(index, bytes, peer);
+            MUST(piece_downloaded(index, bytes, peer)); // TODO run disk IO related stuff like that in a separate thread for potential performance gains
             m_peer_context_stack.clear();
-            if (err.is_error()) {
-                dbgln("Failed to handle a downloaded piece: {}", err.error());
-                // TODO we should shutdown the app at this point and maybe just not use ErrorOr and release the values
-            }
         });
         piece.index = {};
         peer->active = false;
@@ -707,7 +702,7 @@ ErrorOr<void> Comm::connect_to_peer(NonnullRefPtr<PeerContext> peer)
 
     auto socket = TRY(Core::TCPSocket::adopt_fd(socket_fd));
     NonnullRefPtr<Core::Notifier> write_notifier = Core::Notifier::construct(socket_fd, Core::Notifier::Type::Write);
-    auto connection = TRY(PeerConnection::try_create(socket, write_notifier, 5 * MiB, 5 * MiB, PeerRole::Server));
+    auto connection = TRY(PeerConnection::try_create(socket, write_notifier, 1 * MiB, 1 * MiB, PeerRole::Server));
 
     write_notifier->on_activation = [&, socket_fd, connection, peer] {
         m_peer_context_stack.append(peer);
@@ -826,7 +821,7 @@ ErrorOr<void> Comm::on_ready_to_accept()
     TRY(accepted->set_blocking(false));
 
     NonnullRefPtr<Core::Notifier> write_notifier = Core::Notifier::construct(accepted->fd(), Core::Notifier::Type::Write);
-    auto connection = TRY(PeerConnection::try_create(accepted, write_notifier, 5 * MiB, 5 * MiB, PeerRole::Client));
+    auto connection = TRY(PeerConnection::try_create(accepted, write_notifier, 1 * MiB, 1 * MiB, PeerRole::Client));
     m_accepted_connections.set(connection);
 
     write_notifier->on_activation = [&, connection] {

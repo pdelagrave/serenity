@@ -25,6 +25,7 @@ struct PeerView {
     bool we_interested;
     bool it_interested;
     PeerRole role;
+    bool connected;
 };
 
 struct TorrentView {

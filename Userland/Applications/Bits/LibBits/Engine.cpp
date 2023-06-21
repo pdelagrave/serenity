@@ -174,6 +174,8 @@ void Engine::start_torrent(InfoHash info_hash)
 
 void Engine::stop_torrent(InfoHash info_hash)
 {
+    auto torrent = m_torrents.get(info_hash).value();
+    torrent->set_state(TorrentState::STOPPED);
     comm.deactivate_torrent(info_hash);
 }
 
@@ -258,6 +260,11 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
     , m_skip_checking(skip_checking)
     , m_assume_valid(assume_valid)
 {
+    comm.on_torrent_download_completed = [this](auto info_hash) {
+        dbgln("Torrent download completed: {}", info_hash);
+        auto torrent = m_torrents.get(info_hash).value();
+        torrent->set_state(TorrentState::SEEDING);
+    };
 }
 
 Engine::~Engine()

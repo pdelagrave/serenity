@@ -31,6 +31,7 @@ public:
     // An upload slot is when a peer is connected to us, they are intested in us, we aren't interested in them.
     const u16 max_total_upload_slots = 50;
     const u16 max_upload_slots_per_torrent = 5;
+    Function<void(InfoHash)> on_torrent_download_completed = [&](InfoHash hash){ dbglnc("Torrent download completed: {}", hash); };
 
 protected:
     void timer_event(Core::TimerEvent&) override;

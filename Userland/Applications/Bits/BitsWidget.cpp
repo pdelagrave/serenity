@@ -177,7 +177,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
             Bits::TorrentState state = torrents.get(torrents.keys().at(model_index.row())).release_value().state;
             if (state == Bits::TorrentState::STOPPED || state == Bits::TorrentState::ERROR)
                 widget->m_torrent_context_menu->add_action(start_torrent_action);
-            else if (state == Bits::TorrentState::STARTED)
+            else if (state == Bits::TorrentState::STARTED || state == Bits::TorrentState::SEEDING)
                 widget->m_torrent_context_menu->add_action(stop_torrent_action);
             else if (state == Bits::TorrentState::CHECKING)
                 widget->m_torrent_context_menu->add_action(cancel_checking_torrent_action);

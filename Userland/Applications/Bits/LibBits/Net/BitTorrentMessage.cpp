@@ -41,7 +41,7 @@ DeprecatedString Message::to_string() const
 
 DeprecatedString BitFieldMessage::to_string() const
 {
-    return DeprecatedString::formatted("BitField: bytes:{} size:{} ones:{} zeroes:{} progress:{:.1}%", bitfield.bytes(), bitfield.size(), bitfield.ones(), bitfield.zeroes(), bitfield.progress());
+    return DeprecatedString::formatted("BitField: {}", bitfield);
 }
 
 DeprecatedString HandshakeMessage::to_string() const
