@@ -5,8 +5,9 @@
  */
 
 #include "PieceHeap.h"
-#include "Userland/Applications/Bits/LibBits/Net/PeerContext.h"
-#include "Userland/Applications/Bits/LibBits/Net/TorrentContext.h"
+#include "PeerContext.h"
+#include "TorrentContext.h"
+#include "Peer.h"
 
 namespace Bits {
 

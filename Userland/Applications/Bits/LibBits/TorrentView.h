@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include "Applications/Bits/LibBits/Net/PeerRole.h"
 #include "FixedSizeByteString.h"
 #include "Torrent.h"
 #include <AK/DeprecatedString.h>
@@ -24,7 +23,6 @@ struct PeerView {
     bool it_choking_us;
     bool we_interested;
     bool it_interested;
-    PeerRole role;
     bool connected;
 };
 

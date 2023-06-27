@@ -52,6 +52,7 @@ private:
     u8 m_data[size] {};
 };
 
+// FIXME: These would be better as Classes extending FixedSizeByteString<20> to make their usage type safe but it'd be good not to duplicate the Formatter and hash Trait for each of them.
 using PeerId = FixedSizeByteString<20>;
 using InfoHash = FixedSizeByteString<20>;
 
@@ -63,22 +64,10 @@ struct AK::Formatter<Bits::FixedSizeByteString<size>> : AK::Formatter<FormatStri
     {
         for (u8 c : value.bytes())
             TRY(Formatter<FormatString>::format(builder, "{:02X}"sv, c));
-    }
-};
-
-template<>
-struct AK::Formatter<Bits::PeerId> : AK::Formatter<FormatString> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::PeerId const& value)
-    {
-        for (u8 c : value.bytes()) {
-            if (c >= 32 && c <= 126)
-                TRY(Formatter<FormatString>::format(builder, "{:c}"sv, c));
-            else
-                TRY(Formatter<FormatString>::format(builder, "\\x{:02X}"sv, c));
-        }
         return {};
     }
 };
+
 
 template<size_t size>
 struct AK::Traits<Bits::FixedSizeByteString<size>> : public GenericTraits<Bits::FixedSizeByteString<size>> {

@@ -1,27 +1,29 @@
 serenity_component(
-    Bits
-    RECOMMENDED
-    TARGETS Bits
+        Bits
+        RECOMMENDED
+        TARGETS Bits
 )
 
 set(SOURCES
-    LibBits/Bencode/BDecoder.cpp
-    LibBits/Bencode/BEncoder.cpp
-    LibBits/Net/BitTorrentMessage.cpp
-    LibBits/Net/Comm.cpp
-    LibBits/Net/PeerContext.cpp
-    LibBits/Net/PieceHeap.cpp
-    LibBits/Net/TorrentContext.cpp
-    LibBits/BitField.cpp
-    LibBits/Engine.cpp
-    LibBits/MetaInfo.cpp
-    LibBits/TorrentDataFileMap.cpp
-    LibBits/Torrent.cpp
-    Tabs/GeneralTorrentInfoWidget.cpp
-    BitsWidget.cpp
+        LibBits/Bencode/BDecoder.cpp
+        LibBits/Bencode/BEncoder.cpp
+        LibBits/Net/Comm.cpp
+        LibBits/Net/Connection.cpp
+        LibBits/BitField.cpp
+        LibBits/BitTorrentMessage.cpp
+        LibBits/Engine.cpp
+        LibBits/MetaInfo.cpp
+        LibBits/PeerContext.cpp
+        LibBits/Peer.cpp
+        LibBits/PieceHeap.cpp
+        LibBits/TorrentContext.cpp
+        LibBits/TorrentDataFileMap.cpp
+        LibBits/Torrent.cpp
+        Tabs/GeneralTorrentInfoWidget.cpp
         Tabs/PeersTabWidget.cpp
-    main.cpp
-    )
+        BitsWidget.cpp
+        main.cpp
+        )
 
 serenity_app(Bits ICON hard-disk)
 target_link_libraries(Bits PRIVATE LibCore LibGfx LibGUI LibDesktop LibFileSystemAccessClient LibMain LibCrypto LibThreading LibProtocol LibHTTP)

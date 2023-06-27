@@ -6,17 +6,18 @@
 
 #pragma once
 
+#include "BitField.h"
+#include "FixedSizeByteString.h"
 #include "PieceHeap.h"
-#include "Userland/Applications/Bits/LibBits/BitField.h"
-#include "Userland/Applications/Bits/LibBits/TorrentDataFileMap.h"
-
-#include "AK/NonnullRefPtr.h"
-#include "AK/RefCounted.h"
-#include "Applications/Bits/LibBits/FixedSizeByteString.h"
+#include "TorrentDataFileMap.h"
+#include <AK/HashMap.h>
+#include <AK/NonnullRefPtr.h>
+#include <AK/RefCounted.h>
 
 namespace Bits {
 
 struct PeerContext;
+struct Peer;
 
 struct TorrentContext : RefCounted<TorrentContext> {
     TorrentContext(InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port, BitField local_bitfield, NonnullOwnPtr<TorrentDataFileMap> data_file_map);
@@ -34,7 +35,7 @@ struct TorrentContext : RefCounted<TorrentContext> {
     PieceHeap piece_heap;
     HashMap<u64, RefPtr<PieceStatus>> missing_pieces;
 
-    HashTable<NonnullRefPtr<PeerContext>> all_peers;
+    Vector<NonnullRefPtr<Peer>> peers;
     HashTable<NonnullRefPtr<PeerContext>> connected_peers;
 
     u64 download_speed { 0 };

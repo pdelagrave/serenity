@@ -6,14 +6,14 @@
 
 #pragma once
 
-#include "../FixedSizeByteString.h"
-#include "AK/ByteBuffer.h"
-#include "AK/DeprecatedString.h"
-#include "AK/Endian.h"
-#include "AK/MemoryStream.h"
-#include "AK/TypeCasts.h"
-#include "AK/Types.h"
-#include "Userland/Applications/Bits/LibBits/BitField.h"
+#include "BitField.h"
+#include "FixedSizeByteString.h"
+#include <AK/ByteBuffer.h>
+#include <AK/DeprecatedString.h>
+#include <AK/Endian.h>
+#include <AK/MemoryStream.h>
+#include <AK/TypeCasts.h>
+#include <AK/Types.h>
 #include <initializer_list>
 
 namespace Bits {
@@ -125,34 +125,6 @@ public:
         : Message(Type::Choke, StreamWritable({}))
     {
     }
-};
-
-struct HandshakeMessage {
-    u8 pstrlen;
-    u8 pstr[19];
-    u8 reserved[8];
-    u8 info_hash[20];
-    u8 peer_id[20];
-
-    HandshakeMessage(InfoHash info_hash, PeerId peer_id)
-        : pstrlen(19)
-    {
-        memcpy(pstr, "BitTorrent protocol", 19);
-        memset(reserved, 0, 8);
-        memcpy(this->info_hash, info_hash.bytes().data(), 20);
-        memcpy(this->peer_id, peer_id.bytes().data(), 20);
-    }
-
-    HandshakeMessage() = default;
-
-    static ErrorOr<NonnullOwnPtr<HandshakeMessage>> try_create(Stream& stream)
-    {
-        auto handshake = new (nothrow) HandshakeMessage();
-        TRY(stream.read_until_filled(Bytes { handshake, sizeof(HandshakeMessage) }));
-        return adopt_nonnull_own_or_enomem(handshake);
-    }
-
-    DeprecatedString to_string() const;
 };
 
 class HaveMessage : public Message {

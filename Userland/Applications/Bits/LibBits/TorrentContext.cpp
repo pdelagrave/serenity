@@ -4,8 +4,9 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include "PeerContext.h"
 #include "TorrentContext.h"
+#include "Peer.h"
+#include "PeerContext.h"
 
 namespace Bits {
 

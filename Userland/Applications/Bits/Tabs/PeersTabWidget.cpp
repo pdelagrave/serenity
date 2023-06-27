@@ -5,15 +5,14 @@
  */
 
 #include "PeersTabWidget.h"
-#include "AK/NumberFormat.h"
-#include "Userland/Libraries/LibGUI/BoxLayout.h"
-#include "Userland/Libraries/LibGUI/Model.h"
+#include <AK/NumberFormat.h>
+#include <LibGUI/BoxLayout.h>
+#include <LibGUI/Model.h>
 
 class PeerListModel final : public GUI::Model {
 public:
     enum Column {
         Connected,
-        Role,
         IP,
         Port,
         Progress,
@@ -41,8 +40,6 @@ public:
         switch (column) {
         case Column::Connected:
             return "Connected"_string.release_value();
-        case Column::Role:
-            return "Role"_string.release_value();
         case Column::IP:
             return "IP"_short_string;
         case Column::Port:
@@ -75,8 +72,6 @@ public:
             switch (index.column()) {
             case Column::Connected:
                 return peer.connected;
-            case Column::Role:
-                return peer.role == Bits::Client ? "Client" : "Server";
             case Column::IP:
                 return peer.ip;
             case Column::Port:
@@ -121,4 +116,3 @@ void PeersTabWidget::update(Vector<Bits::PeerView> peers)
 {
     static_cast<PeerListModel*>(m_peers_table_view->model())->update(peers);
 }
-
