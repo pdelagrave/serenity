@@ -33,6 +33,9 @@ public:
     void cancel_checking(InfoHash);
 
 private:
+    OwnPtr<Core::EventLoop> m_event_loop;
+    RefPtr<Threading::Thread> m_thread;
+
     Engine(NonnullRefPtr<Protocol::RequestClient>, bool skip_checking, bool assume_valid);
     static ErrorOr<String> url_encode_bytes(u8 const* bytes, size_t length);
     static ErrorOr<void> create_file(DeprecatedString const& path);

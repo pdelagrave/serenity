@@ -299,17 +299,23 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
     , m_skip_checking(skip_checking)
     , m_assume_valid(assume_valid)
 {
-    auto& engine_loop = Core::EventLoop::current();
+    m_thread = Threading::Thread::construct([this]() -> intptr_t {
+        m_event_loop = make<Core::EventLoop>();
+        return m_event_loop->exec();
+    },
+        "Engine"sv);
+
+    m_thread->start();
 
     m_comm.on_peer_disconnect = [&](ConnectionId connection_id, DeprecatedString reason) {
-        engine_loop.deferred_invoke([&, connection_id, reason] {
+        m_event_loop->deferred_invoke([&, connection_id, reason] {
             dbgln("Disconnected: {}", reason);
             peer_disconnected(connection_id);
         });
     };
 
     m_comm.on_message_receive = [&](ConnectionId connection_id, ReadonlyBytes message_bytes) {
-        engine_loop.deferred_invoke([&, connection_id, buffer = MUST(ByteBuffer::copy(message_bytes))] {
+        m_event_loop->deferred_invoke([&, connection_id, buffer = MUST(ByteBuffer::copy(message_bytes))] {
             auto err = parse_input_message(connection_id, buffer.bytes());
             if (err.is_error()) {
                 m_comm.close_connection(connection_id, DeprecatedString::formatted("Error parsing input message for connection id {}: {}", connection_id, err.error().string_literal()));
@@ -318,7 +324,7 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
     };
 
     m_comm.on_connection_established = [&](ConnectionId connection_id) {
-        engine_loop.deferred_invoke([&, connection_id] {
+        m_event_loop->deferred_invoke([&, connection_id] {
             auto maybe_peer = m_connecting_peers.take(connection_id);
             VERIFY(maybe_peer.has_value());
 
@@ -332,6 +338,7 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
         });
     };
 
+    // Synchronous callback from Comm, careful with shared state.
     m_comm.on_handshake_from_outgoing_connection = [&](ConnectionId connection_id, HandshakeMessage handshake) -> bool {
         auto maybe_peer = m_connecting_peers.get(connection_id);
         VERIFY(maybe_peer.has_value());
@@ -352,6 +359,7 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
         return true;
     };
 
+    // Synchronous callback from Comm, careful with shared state.
     m_comm.on_handshake_from_incoming_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, Core::SocketAddress address) -> Optional<HandshakeMessage> {
         VERIFY(!m_connecting_peers.contains(connection_id));
         VERIFY(!m_connected_peers.contains(connection_id));

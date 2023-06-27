@@ -6,7 +6,8 @@
 
 #include "Comm.h"
 #include "HandshakeMessage.h"
-#include "Userland/Applications/Bits/LibBits/BitTorrentMessage.h"
+// FIXME: Ideally Comm would only know about the abstract Message class and shouldn't be exposed to any specific message types. Handshake and Keepalives are the only special message types and handled by Comm.
+#include "../BitTorrentMessage.h"
 #include <LibCore/System.h>
 
 namespace Bits {
@@ -38,7 +39,7 @@ Comm::Comm()
         start_timer(1000);
         return m_event_loop->exec();
     },
-        "Comm thread"sv);
+        "Comm"sv);
 
     m_thread->start();
 }
