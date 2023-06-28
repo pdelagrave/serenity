@@ -88,10 +88,15 @@ void Comm::timer_event(Core::TimerEvent&)
     }
 
     // TODO add connecting time outs
+    // TODO add handshake callbacks time outs
 }
 
 ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<Connection> connection)
 {
+    if (connection->handshake_received && !connection->session_established) {
+        return {}; // Still waiting for the Engine to call us back for the decision about this connection.
+    }
+
     for (;;) {
         auto nread_or_error = connection->input_message_buffer.fill_from_stream(*connection->socket);
         if (connection->socket->is_eof()) {
@@ -117,34 +122,51 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<Connection> connection)
             auto buffer = TRY(ByteBuffer::create_uninitialized(connection->incoming_message_length));
             VERIFY(connection->input_message_buffer.read(buffer.bytes()).size() == connection->incoming_message_length);
 
+            connection->incoming_message_length = 0;
+            connection->last_message_received_at = Core::DateTime::now();
+
             if (!connection->handshake_received) {
                 auto handshake = HandshakeMessage(buffer.bytes());
                 dbgln("Received handshake: {}", handshake.to_string());
+                connection->handshake_received = true;
+                connection->socket->set_notifications_enabled(false); // Because we don't want to read and parse messages from that peer until we have accepted the handshake.
 
                 if (connection->handshake_sent) {
-                    if (on_handshake_from_outgoing_connection(connection->id, handshake)) {
-                        connection->handshake_received = true;
-                        on_connection_established(connection->id);
-                    } else {
-                        close_connection_internal(connection, "Disconnecting based on received handshake");
-                        return {};
-                    }
+                    on_handshake_from_outgoing_connection(connection->id, handshake, [&, connection] (bool accepted) {
+                        m_event_loop->deferred_invoke([&, connection, accepted] {
+                            if (accepted) {
+                                connection->session_established = true;
+                                on_connection_established(connection->id);
+                                connection->socket->on_ready_to_read();
+                                connection->socket->set_notifications_enabled(true);
+                            } else {
+                                close_connection_internal(connection, "Disconnecting based on received handshake");
+                            }
+                        });
+                    });
                 } else {
-                    auto maybe_handshake_to_send = on_handshake_from_incoming_connection(connection->id, handshake, connection->socket->address());
-                    if (maybe_handshake_to_send.has_value()) {
-                        connection->handshake_received = true;
-                        TRY(send_handshake(maybe_handshake_to_send.value(), connection));
-                        on_connection_established(connection->id);
-                    } else {
-                        close_connection_internal(connection, "Connection request rejected based on received handshake", false);
-                        return {};
-                    }
+                    on_handshake_from_incoming_connection(connection->id, handshake, connection->socket->address(), [&, connection] (Optional<HandshakeMessage> maybe_handshake_to_send) {
+                        m_event_loop->deferred_invoke([&, connection, maybe_handshake_to_send] {
+                            if (maybe_handshake_to_send.has_value()) {
+                                auto err = send_handshake(maybe_handshake_to_send.value(), connection);
+                                if (err.is_error()) {
+                                    close_connection_internal(connection, "Error sending handshake");
+                                    return;
+                                }
+                                connection->session_established = true;
+                                on_connection_established(connection->id);
+                                connection->socket->on_ready_to_read();
+                                connection->socket->set_notifications_enabled(true);
+                            } else {
+                                close_connection_internal(connection, "Connection request rejected based on received handshake");
+                            }
+                        });
+                    });
                 }
+                return {}; // Also because we don't want to read and parse more messages from that peer until we have accepted the handshake.
             } else {
                 on_message_receive(connection->id, buffer.bytes());
             }
-            connection->incoming_message_length = 0;
-            connection->last_message_received_at = Core::DateTime::now();
         } else if (connection->input_message_buffer.used_space() >= sizeof(connection->incoming_message_length)) {
             connection->input_message_buffer.read({ &connection->incoming_message_length, sizeof(connection->incoming_message_length) });
             if (connection->incoming_message_length == 0) {
@@ -209,7 +231,7 @@ ErrorOr<ConnectionId> Comm::connect(Core::SocketAddress address, HandshakeMessag
 
     write_notifier->on_activation = [&, socket_fd, connection, handshake] {
         // We were already connected and we can write again:
-        if (connection->session_established()) {
+        if (connection->handshake_sent) {
             auto err = flush_output_buffer(connection);
             if (err.is_error()) {
                 close_connection_internal(connection, DeprecatedString::formatted("Error flushing output buffer: {}", err.release_error()));
@@ -287,7 +309,7 @@ ErrorOr<void> Comm::send_handshake(HandshakeMessage handshake, NonnullRefPtr<Con
     return {};
 }
 
-void Comm::close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message, bool invoke_callback)
+void Comm::close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message)
 {
     connection->socket_writable_notifier->close();
     connection->socket->close();
@@ -299,7 +321,8 @@ void Comm::close_connection_internal(NonnullRefPtr<Connection> connection, Depre
     connection->bytes_uploaded_since_last_speed_measurement = 0;
     m_connections.remove(connection->id);
 
-    if (invoke_callback)
+    // Assuming that in all cases, if we sent the handshake, the engine is aware of the connection, and it's safe to invoke the callback.
+    if (connection->handshake_sent)
         on_peer_disconnect(connection->id, error_message);
 }
 
@@ -323,7 +346,7 @@ ErrorOr<void> Comm::on_ready_to_accept()
     connection->socket->on_ready_to_read = [&, connection] {
         auto err = read_from_socket(connection);
         if (err.is_error()) {
-            close_connection_internal(connection, DeprecatedString::formatted("Error reading from (accepted) socket: {}", err.release_error()), connection->session_established());
+            close_connection_internal(connection, DeprecatedString::formatted("Error reading from (accepted) socket: {}", err.release_error()));
         }
     };
     return {};

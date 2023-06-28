@@ -37,6 +37,6 @@ template<>
 struct AK::Formatter<Bits::Peer> : AK::Formatter<FormatString> {
     ErrorOr<void> format(FormatBuilder& builder, Bits::Peer const& value)
     {
-        return Formatter<FormatString>::format(builder, "{}"sv, value.address);
+        return Formatter<FormatString>::format(builder, "{}"sv, value.address.to_deprecated_string());
     }
 };

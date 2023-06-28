@@ -333,53 +333,56 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
             m_connected_peers.set(connection_id, pcontext);
             peer->torrent_context->connected_peers.set(pcontext);
 
-            dbgln("Peer connected: {}", peer);
+            dbgln("Peer connected: {}", *peer);
             m_comm.send_message(connection_id, make<BitFieldMessage>(peer->torrent_context->local_bitfield));
         });
     };
 
-    // Synchronous callback from Comm, careful with shared state.
-    m_comm.on_handshake_from_outgoing_connection = [&](ConnectionId connection_id, HandshakeMessage handshake) -> bool {
-        auto maybe_peer = m_connecting_peers.get(connection_id);
-        VERIFY(maybe_peer.has_value());
-        auto peer = maybe_peer.release_value();
+    m_comm.on_handshake_from_outgoing_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, auto accept_connection) {
+        m_event_loop->deferred_invoke([&, connection_id, handshake, accept_connection = move(accept_connection)] {
+            auto maybe_peer = m_connecting_peers.get(connection_id);
+            VERIFY(maybe_peer.has_value());
+            auto peer = maybe_peer.release_value();
 
-        if (peer->torrent_context->local_peer_id == handshake.peer_id()) {
-            dbgln("Trying to connect to ourselves, disconnecting.");
-            return false;
-        }
+            if (peer->torrent_context->info_hash != handshake.info_hash()) {
+                dbgln("Peer sent a handshake with the wrong torrent info hash, disconnecting.");
+                accept_connection(false);
+                return;
+            }
 
-        if (peer->torrent_context->info_hash != handshake.info_hash()) {
-            dbgln("Peer sent a handshake with the wrong torrent info hash, disconnecting.");
-            return false;
-        }
-
-        peer->id_from_handshake = handshake.peer_id();
-
-        return true;
+            peer->id_from_handshake = handshake.peer_id();
+            accept_connection(true);
+        });
     };
 
-    // Synchronous callback from Comm, careful with shared state.
-    m_comm.on_handshake_from_incoming_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, Core::SocketAddress address) -> Optional<HandshakeMessage> {
-        VERIFY(!m_connecting_peers.contains(connection_id));
-        VERIFY(!m_connected_peers.contains(connection_id));
 
-        auto maybe_tcontext = m_torrent_contexts.get(handshake.info_hash());
-        if (maybe_tcontext.has_value()) {
-            // TODO: Add more checks before accepting the connection.
-            auto tcontext = maybe_tcontext.release_value();
+    m_comm.on_handshake_from_incoming_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, Core::SocketAddress address, auto accept_connection) {
+        m_event_loop->deferred_invoke([&, connection_id, handshake, address, accept_connection = move(accept_connection)] {
+            VERIFY(!m_connecting_peers.contains(connection_id));
+            VERIFY(!m_connected_peers.contains(connection_id));
 
-            // FIXME: The peer likely already exists in tcontext->peers
-            auto peer = make_ref_counted<Peer>(address, *tcontext);
-            peer->status = PeerStatus::InUse;
-            peer->id_from_handshake = handshake.peer_id();
-            m_connecting_peers.set(connection_id, peer);
+            auto maybe_tcontext = m_torrent_contexts.get(handshake.info_hash());
+            if (maybe_tcontext.has_value()) {
+                // TODO: Add more checks before accepting the connection.
+                auto tcontext = maybe_tcontext.release_value();
+                if (tcontext->local_peer_id == handshake.peer_id()) {
+                    dbgln("Refusing connection from ourselves.");
+                    accept_connection({});
+                    return;
+                }
 
-            return HandshakeMessage(tcontext->info_hash, tcontext->local_peer_id);
-        } else {
-            dbgln("Peer sent a handshake with an unknown torrent info hash, disconnecting.");
-            return {};
-        }
+                // FIXME: The peer likely already exists in tcontext->peers
+                auto peer = make_ref_counted<Peer>(address, *tcontext);
+                peer->status = PeerStatus::InUse;
+                peer->id_from_handshake = handshake.peer_id();
+                m_connecting_peers.set(connection_id, peer);
+
+                accept_connection(HandshakeMessage(tcontext->info_hash, tcontext->local_peer_id));
+            } else {
+                dbgln("Peer sent a handshake with an unknown torrent info hash, disconnecting.");
+                accept_connection({});
+            }
+        });
     };
 }
 
@@ -399,11 +402,17 @@ ErrorOr<NonnullRefPtr<Engine>> Engine::try_create(bool skip_checking, bool assum
 
 void Engine::connect_more_peers(NonnullRefPtr<TorrentContext> torrent)
 {
-    u16 total_connections = 0;
+    u64 total_connections = 0;
     for (auto const& [_, tcontext] : m_torrent_contexts) {
         total_connections += tcontext->connected_peers.size();
     }
-    size_t available_slots = min(max_connections_per_torrent - torrent->connected_peers.size(), max_total_connections - total_connections);
+    u64 total_connections_for_torrent = torrent->connected_peers.size();
+    for (auto const& [_, peer] : m_connecting_peers) {
+        if (peer->torrent_context == torrent)
+            total_connections_for_torrent++;
+    }
+
+    size_t available_slots = min(max_connections_per_torrent - total_connections_for_torrent, max_total_connections - total_connections);
     dbgln("We have {} available slots for new connections", available_slots);
 
     auto peer_it = torrent->peers.begin();
@@ -416,6 +425,7 @@ void Engine::connect_more_peers(NonnullRefPtr<TorrentContext> torrent)
                 peer->status = PeerStatus::Errored;
             } else {
                 peer->status = PeerStatus::InUse;
+                dbgln("Connecting to peer {} connection id: {}", peer->address, maybe_conn_id.value());
                 m_connecting_peers.set(maybe_conn_id.value(), peer);
                 available_slots--;
             }

@@ -38,7 +38,7 @@ struct Connection : public RefCounted<Connection> {
 
     bool handshake_received { false };
     bool handshake_sent { false };
-    bool session_established() const { return handshake_received && handshake_sent; }
+    bool session_established { false};
 
 private:
     Connection(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier>& write_notifier, CircularBuffer& input_message_buffer, CircularBuffer& output_message_buffer);

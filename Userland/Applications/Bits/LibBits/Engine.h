@@ -51,11 +51,11 @@ private:
     bool m_assume_valid;
 
     // #######################################################################################################
-    const u16 max_total_connections = 100;
-    const u16 max_connections_per_torrent = 10;
+    const u64 max_total_connections = 100;
+    const u64 max_connections_per_torrent = 10;
     // An upload slot is when a peer is connected to us, they are intested in us, we aren't interested in them.
-    const u16 max_total_upload_slots = 50;
-    const u16 max_upload_slots_per_torrent = 5;
+    const u64 max_total_upload_slots = 50;
+    const u64 max_upload_slots_per_torrent = 5;
 
     const u64 BlockLength = 16 * KiB;
 

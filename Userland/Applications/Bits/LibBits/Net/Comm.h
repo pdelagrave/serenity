@@ -29,8 +29,8 @@ public:
     Function<void(ConnectionId, DeprecatedString)> on_peer_disconnect;
     Function<void(ConnectionId, ReadonlyBytes)> on_message_receive;
     Function<void(ConnectionId)> on_connection_established;
-    Function<bool(ConnectionId, HandshakeMessage)> on_handshake_from_outgoing_connection;
-    Function<Optional<HandshakeMessage>(ConnectionId, HandshakeMessage, Core::SocketAddress)> on_handshake_from_incoming_connection;
+    Function<void(ConnectionId, HandshakeMessage, Function<void(bool)>)> on_handshake_from_outgoing_connection;
+    Function<void(ConnectionId, HandshakeMessage, Core::SocketAddress, Function<void(Optional<HandshakeMessage>)>)> on_handshake_from_incoming_connection;
     ErrorOr<ConnectionId> connect(Core::SocketAddress address, HandshakeMessage handshake);
     void send_message(ConnectionId connection_id, NonnullOwnPtr<Message> message);
 
@@ -51,7 +51,7 @@ private:
     ErrorOr<void> flush_output_buffer(NonnullRefPtr<Connection> connection);
 
     ErrorOr<void> send_handshake(HandshakeMessage handshake, NonnullRefPtr<Connection> connection);
-    void close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message, bool invoke_callback = true);
+    void close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message);
 
     ErrorOr<void> on_ready_to_accept();
 };
