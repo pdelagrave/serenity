@@ -19,6 +19,15 @@ namespace Bits {
 
 class Message;
 
+// FIXME: move bandwidth/speed management to the engine, Comm should only report how many bytes were downloaded/uploaded since the last stats callback invocation.
+struct ConnectionStats {
+    ConnectionId connection_id;
+    u64 bytes_downloaded { 0 };
+    u64 bytes_uploaded { 0 };
+    u64 download_speed { 0 };
+    u64 upload_speed { 0 };
+};
+
 class Comm : public Core::Object {
     C_OBJECT(Comm);
 
@@ -31,6 +40,8 @@ public:
     Function<void(ConnectionId)> on_connection_established;
     Function<void(ConnectionId, HandshakeMessage, Function<void(bool)>)> on_handshake_from_outgoing_connection;
     Function<void(ConnectionId, HandshakeMessage, Core::SocketAddress, Function<void(Optional<HandshakeMessage>)>)> on_handshake_from_incoming_connection;
+    Function<void(NonnullOwnPtr<HashMap<ConnectionId, ConnectionStats>>)> on_connection_stats_update;
+
     ErrorOr<ConnectionId> connect(Core::SocketAddress address, HandshakeMessage handshake);
     void send_message(ConnectionId connection_id, NonnullOwnPtr<Message> message);
 
@@ -43,6 +54,7 @@ private:
     NonnullRefPtr<Core::TCPServer> m_server;
 
     timeval m_last_speed_measurement;
+    HashMap<ConnectionId, ConnectionStats> m_connection_stats;
 
     // Comm BT low level network functions
     HashMap<ConnectionId, NonnullRefPtr<Connection>> m_connections;
@@ -54,6 +66,7 @@ private:
     void close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message);
 
     ErrorOr<void> on_ready_to_accept();
+    ErrorOr<NonnullRefPtr<Connection>> create_connection(NonnullOwnPtr<Core::TCPSocket> socket);
 };
 
 }

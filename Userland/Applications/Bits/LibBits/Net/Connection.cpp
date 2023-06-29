@@ -20,7 +20,7 @@ ErrorOr<NonnullRefPtr<Connection>> Connection::try_create(NonnullOwnPtr<Core::TC
 
 Connection::Connection(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier>& write_notifier, CircularBuffer& input_message_buffer, CircularBuffer& output_message_buffer)
     : socket(move(socket))
-    , socket_writable_notifier(move(write_notifier))
+    , write_notifier(move(write_notifier))
     , input_message_buffer(move(input_message_buffer))
     , output_message_buffer(move(output_message_buffer))
     , incoming_message_length(sizeof(HandshakeMessage))

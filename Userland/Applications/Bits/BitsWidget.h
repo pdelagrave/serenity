@@ -20,7 +20,7 @@ public:
     virtual int row_count(GUI::ModelIndex const& index = GUI::ModelIndex()) const override;
 
     Bits::TorrentView torrent_at(int index) const;
-    void update(HashMap<Bits::InfoHash, Bits::TorrentView>);
+    void update(NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>>);
 
 private:
     enum Column {
@@ -34,7 +34,7 @@ private:
         __Count
     };
 
-    HashMap<Bits::InfoHash, Bits::TorrentView> m_torrents;
+    NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>> m_torrents { make<HashMap<Bits::InfoHash, Bits::TorrentView>>() };
     Vector<Bits::InfoHash> m_hashes;
 };
 

@@ -19,7 +19,7 @@ struct Connection : public RefCounted<Connection> {
 
     const ConnectionId id = { s_next_id++ };
     NonnullOwnPtr<Core::TCPSocket> socket;
-    NonnullRefPtr<Core::Notifier> socket_writable_notifier;
+    NonnullRefPtr<Core::Notifier> write_notifier;
 
     CircularBuffer input_message_buffer;
     CircularBuffer output_message_buffer;
@@ -29,16 +29,19 @@ struct Connection : public RefCounted<Connection> {
     Core::DateTime last_message_sent_at = Core::DateTime::now();
 
     u64 bytes_downloaded_since_last_speed_measurement { 0 };
-    // fixme make this an atomic NonnullRefPtr variable in a struct so its easy to share with Engine
     u64 download_speed { 0 };
 
     u64 bytes_uploaded_since_last_speed_measurement { 0 };
-    // fixme make this an atomic NonnullRefPtr variable in a struct so its easy to share with Engine
     u64 upload_speed { 0 };
 
+    // Read from the socket, but not necessarily accepted by the engine.
     bool handshake_received { false };
+
+    // Sent on the socket
     bool handshake_sent { false };
-    bool session_established { false};
+
+    // True once the handshake was accepted by the engine and ours was sent.
+    bool session_established { false };
 
 private:
     Connection(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier>& write_notifier, CircularBuffer& input_message_buffer, CircularBuffer& output_message_buffer);

@@ -19,6 +19,8 @@ struct PeerView {
     float progress;
     u64 download_speed;
     u64 upload_speed;
+    u64 downloaded_bytes;
+    u64 uploaded_bytes;
     bool we_choking_it;
     bool it_choking_us;
     bool we_interested;

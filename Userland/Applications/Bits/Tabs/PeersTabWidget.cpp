@@ -12,12 +12,13 @@
 class PeerListModel final : public GUI::Model {
 public:
     enum Column {
-        Connected,
         IP,
         Port,
         Progress,
         DownloadSpeed,
         UploadSpeed,
+        DownloadedBytes,
+        UploadedBytes,
         IsChokedByUs,
         IsChokingUs,
         IsInterestedByUs,
@@ -38,8 +39,6 @@ public:
     virtual ErrorOr<String> column_name(int column) const override
     {
         switch (column) {
-        case Column::Connected:
-            return "Connected"_string.release_value();
         case Column::IP:
             return "IP"_short_string;
         case Column::Port:
@@ -50,6 +49,10 @@ public:
             return "Download Speed"_string.release_value();
         case Column::UploadSpeed:
             return "Upload Speed"_string.release_value();
+        case Column::DownloadedBytes:
+            return "Downloaded"_string.release_value();
+        case Column::UploadedBytes:
+            return "Uploaded"_string.release_value();
         case Column::IsChokedByUs:
             return "Choked By Us"_string.release_value();
         case Column::IsChokingUs:
@@ -70,8 +73,6 @@ public:
         if (role == GUI::ModelRole::Display) {
             auto& peer = m_peers.at(index.row());
             switch (index.column()) {
-            case Column::Connected:
-                return peer.connected;
             case Column::IP:
                 return peer.ip;
             case Column::Port:
@@ -82,6 +83,10 @@ public:
                 return DeprecatedString::formatted("{}/s", human_readable_size(peer.download_speed));
             case Column::UploadSpeed:
                 return DeprecatedString::formatted("{}/s", human_readable_size(peer.upload_speed));
+            case Column::DownloadedBytes:
+                return human_readable_size(peer.downloaded_bytes);
+            case Column::UploadedBytes:
+                return human_readable_size(peer.uploaded_bytes);
             case Column::IsChokedByUs:
                 return peer.we_choking_it;
             case Column::IsChokingUs:

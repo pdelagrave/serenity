@@ -64,13 +64,20 @@ void Comm::timer_event(Core::TimerEvent&)
     timersub(&current_time, &m_last_speed_measurement, &time_diff);
     auto time_diff_ms = time_diff.tv_sec * 1000 + time_diff.tv_usec / 1000;
     for (auto const& [cid, c] : m_connections) {
+        auto& stats = m_connection_stats.get(cid).release_value();
+
         c->download_speed = (c->bytes_downloaded_since_last_speed_measurement / time_diff_ms) * 1000;
+        stats.download_speed = c->download_speed;
+        stats.bytes_downloaded += c->bytes_downloaded_since_last_speed_measurement;
         c->bytes_downloaded_since_last_speed_measurement = 0;
 
         c->upload_speed = (c->bytes_uploaded_since_last_speed_measurement / time_diff_ms) * 1000;
+        stats.upload_speed = c->upload_speed;
+        stats.bytes_uploaded += c->bytes_uploaded_since_last_speed_measurement;
         c->bytes_uploaded_since_last_speed_measurement = 0;
     }
     m_last_speed_measurement = current_time;
+    on_connection_stats_update(make<HashMap<ConnectionId, ConnectionStats>>(m_connection_stats));
 
     // Peers keepalive
     auto keepalive_timeout = Duration::from_seconds(120);
@@ -196,7 +203,7 @@ ErrorOr<void> Comm::flush_output_buffer(NonnullRefPtr<Connection> connection)
                 continue;
             } else if (code == EAGAIN) {
                 dbgln("Socket is not ready to write, enabling read to write notifier");
-                connection->socket_writable_notifier->set_enabled(true);
+                connection->write_notifier->set_enabled(true);
             } else {
                 dbgln("Error writing to socket: err: {}  code: {}  codestr: {}", err.error(), code, strerror(code));
                 return Error::from_errno(code);
@@ -207,7 +214,7 @@ ErrorOr<void> Comm::flush_output_buffer(NonnullRefPtr<Connection> connection)
 
         if (connection->output_message_buffer.used_space() == 0) {
             //            dbglnc(parent_context, context, "Output message buffer is empty, we sent everything, disabling ready to write notifier");
-            connection->socket_writable_notifier->set_enabled(false);
+            connection->write_notifier->set_enabled(false);
             return {};
         }
     }
@@ -222,14 +229,9 @@ ErrorOr<ConnectionId> Comm::connect(Core::SocketAddress address, HandshakeMessag
     if (connect_err.is_error() && connect_err.error().code() != EINPROGRESS)
         return connect_err.release_error();
 
-    auto socket = TRY(Core::TCPSocket::adopt_fd(socket_fd));
-    NonnullRefPtr<Core::Notifier> write_notifier = Core::Notifier::construct(socket_fd, Core::Notifier::Type::Write);
-    write_notifier->set_enabled(false); // will enable in the hack at the end of the method.
+    auto connection = TRY(create_connection(TRY(Core::TCPSocket::adopt_fd(socket_fd))));
 
-    auto connection = TRY(Connection::try_create(socket, write_notifier, 1 * MiB, 1 * MiB));
-    m_connections.set(connection->id, connection);
-
-    write_notifier->on_activation = [&, socket_fd, connection, handshake] {
+    connection->write_notifier->on_activation = [&, socket_fd, connection, handshake] {
         // We were already connected and we can write again:
         if (connection->handshake_sent) {
             auto err = flush_output_buffer(connection);
@@ -250,7 +252,7 @@ ErrorOr<ConnectionId> Comm::connect(Core::SocketAddress address, HandshakeMessag
         }
 
         if (so_error == ESUCCESS) {
-            connection->socket_writable_notifier->set_enabled(false);
+            connection->write_notifier->set_enabled(false);
             connection->socket->on_ready_to_read = [&, connection] {
                 auto err = read_from_socket(connection);
                 if (err.is_error()) {
@@ -268,7 +270,7 @@ ErrorOr<ConnectionId> Comm::connect(Core::SocketAddress address, HandshakeMessag
     };
 
     // FIXME: Hack to make the notifier enabled on the Comm thread/eventloop. Simpler for now to have the Comm::connect() method to be synchronous because of the Connection() constructor and connection id generation.
-    m_event_loop->deferred_invoke([&, write_notifier] {
+    m_event_loop->deferred_invoke([&, write_notifier = connection->write_notifier] {
         write_notifier->set_enabled(true);
     });
 
@@ -311,14 +313,11 @@ ErrorOr<void> Comm::send_handshake(HandshakeMessage handshake, NonnullRefPtr<Con
 
 void Comm::close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message)
 {
-    connection->socket_writable_notifier->close();
+    connection->write_notifier->close();
     connection->socket->close();
     connection->socket->on_ready_to_read = nullptr;
 
-    connection->download_speed = 0;
-    connection->upload_speed = 0;
-    connection->bytes_downloaded_since_last_speed_measurement = 0;
-    connection->bytes_uploaded_since_last_speed_measurement = 0;
+    m_connection_stats.remove(connection->id);
     m_connections.remove(connection->id);
 
     // Assuming that in all cases, if we sent the handshake, the engine is aware of the connection, and it's safe to invoke the callback.
@@ -331,17 +330,14 @@ ErrorOr<void> Comm::on_ready_to_accept()
     auto accepted_socket = TRY(m_server->accept());
     TRY(accepted_socket->set_blocking(false));
 
-    NonnullRefPtr<Core::Notifier> write_notifier = Core::Notifier::construct(accepted_socket->fd(), Core::Notifier::Type::Write);
-    auto connection = TRY(Connection::try_create(accepted_socket, write_notifier, 1 * MiB, 1 * MiB));
-    m_connections.set(connection->id, connection);
+    auto connection = TRY(create_connection(move(accepted_socket)));
 
-    write_notifier->on_activation = [&, connection] {
+    connection->write_notifier->on_activation = [&, connection] {
         auto err = flush_output_buffer(connection);
         if (err.is_error()) {
             close_connection_internal(connection, DeprecatedString::formatted("Error flushing output buffer for accepted connection: {}", err.release_error()));
         }
     };
-    write_notifier->set_enabled(false);
 
     connection->socket->on_ready_to_read = [&, connection] {
         auto err = read_from_socket(connection);
@@ -350,6 +346,19 @@ ErrorOr<void> Comm::on_ready_to_accept()
         }
     };
     return {};
+}
+
+ErrorOr<NonnullRefPtr<Connection>> Comm::create_connection(NonnullOwnPtr<Core::TCPSocket> socket)
+{
+    NonnullRefPtr<Core::Notifier> write_notifier = Core::Notifier::construct(socket->fd(), Core::Notifier::Type::Write);
+    // Initial state should be enabled when creating an outbound connection, disabled when accepting an inbound connection.
+    write_notifier->set_enabled(false);
+
+    auto connection = TRY(Connection::try_create(socket, write_notifier, 1 * MiB, 1 * MiB));
+    m_connections.set(connection->id, connection);
+    m_connection_stats.set(connection->id, ConnectionStats {});
+
+    return connection;
 }
 
 }

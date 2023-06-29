@@ -31,42 +31,41 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
     m_torrents.set(info_hash, move(torrent));
 }
 
-HashMap<InfoHash, TorrentView> Engine::torrents()
+NonnullOwnPtr<HashMap<InfoHash, TorrentView>> Engine::torrents_views()
 {
-    HashMap<InfoHash, TorrentView> views;
+    auto views = make<HashMap<InfoHash, TorrentView>>();
     for (auto const& [info_hash, torrent] : m_torrents) {
         auto maybe_tcontext = m_torrent_contexts.get(info_hash);
         if (maybe_tcontext.has_value()) {
             auto tcontext = maybe_tcontext.release_value();
             Vector<PeerView> pviews;
             pviews.ensure_capacity(tcontext->connected_peers.size());
+
+            tcontext->download_speed = 0;
+            tcontext->upload_speed = 0;
             for (auto const& peer : tcontext->connected_peers) {
+                const auto& stats = m_connection_stats->get(peer->connection_id).value_or({});
                 pviews.append(PeerView(
                     peer->id,
                     peer->peer->address.ipv4_address().to_deprecated_string(),
                     peer->peer->address.port(),
                     peer->bitfield.progress(),
-                    0,
-                    0,
+                    stats.download_speed,
+                    stats.upload_speed,
+                    stats.bytes_downloaded,
+                    stats.bytes_uploaded,
                     peer->we_are_choking_peer,
                     peer->peer_is_choking_us,
                     peer->we_are_interested_in_peer,
                     peer->peer_is_interested_in_us,
                     true));
+                tcontext->download_speed += stats.download_speed;
+                tcontext->upload_speed += stats.upload_speed;
             }
 
-            views.set(info_hash, TorrentView(info_hash,
-                                     torrent->display_name(),
-                                     tcontext->total_length,
-                                     torrent->state(),
-                                     tcontext->local_bitfield.progress(),
-                                     tcontext->download_speed,
-                                     tcontext->upload_speed,
-                                     torrent->data_path(),
-                                     pviews,
-                                     tcontext->local_bitfield));
+            views->set(info_hash, TorrentView(info_hash, torrent->display_name(), tcontext->total_length, torrent->state(), tcontext->local_bitfield.progress(), tcontext->download_speed, tcontext->upload_speed, torrent->data_path(), pviews, tcontext->local_bitfield));
         } else {
-            views.set(info_hash, TorrentView(info_hash, torrent->display_name(), torrent->meta_info().total_length(), torrent->state(), 0, 0, 0, torrent->data_path(), {}, { (u64)torrent->meta_info().total_length() }));
+            views->set(info_hash, TorrentView(info_hash, torrent->display_name(), torrent->meta_info().total_length(), torrent->state(), 0, 0, 0, torrent->data_path(), {}, { (u64)torrent->meta_info().total_length() }));
         }
     }
 
@@ -225,6 +224,15 @@ void Engine::cancel_checking(InfoHash info_hash)
     torrent->set_state(TorrentState::STOPPED);
 }
 
+void Engine::register_views_update_callback(int interval_ms, Function<void(NonnullOwnPtr<HashMap<InfoHash, TorrentView>>)> views_updated)
+{
+    m_event_loop->deferred_invoke([&, interval_ms, views_updated = move(views_updated)] () mutable {
+        add<Core::Timer>(interval_ms, [&, views_updated = move(views_updated)] {
+            views_updated(torrents_views());
+        }).start();
+    });
+}
+
 ErrorOr<String> Engine::url_encode_bytes(u8 const* bytes, size_t length)
 {
     StringBuilder builder;
@@ -355,7 +363,6 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
         });
     };
 
-
     m_comm.on_handshake_from_incoming_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, Core::SocketAddress address, auto accept_connection) {
         m_event_loop->deferred_invoke([&, connection_id, handshake, address, accept_connection = move(accept_connection)] {
             VERIFY(!m_connecting_peers.contains(connection_id));
@@ -382,6 +389,12 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
                 dbgln("Peer sent a handshake with an unknown torrent info hash, disconnecting.");
                 accept_connection({});
             }
+        });
+    };
+
+    m_comm.on_connection_stats_update = [&](NonnullOwnPtr<HashMap<ConnectionId, ConnectionStats>> stats) {
+        m_event_loop->deferred_invoke([&, stats = move(stats)]() mutable {
+            m_connection_stats = move(stats);
         });
     };
 }

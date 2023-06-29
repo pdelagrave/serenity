@@ -5,8 +5,7 @@
  */
 
 #include "BitsWidget.h"
-#include "Applications/Bits/Tabs/GeneralTorrentInfoWidget.h"
-#include "Userland/Applications/Bits/Tabs/PeersTabWidget.h"
+#include "Tabs/GeneralTorrentInfoWidget.h"
 #include <AK/NumberFormat.h>
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>
@@ -75,18 +74,18 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
 
 int TorrentModel::row_count(GUI::ModelIndex const&) const
 {
-    return m_torrents.size();
+    return m_torrents->size();
 }
 
 Bits::TorrentView TorrentModel::torrent_at(int index) const
 {
-    return m_torrents.get(m_hashes.at(index)).release_value();
+    return m_torrents->get(m_hashes.at(index)).release_value();
 }
 
-void TorrentModel::update(HashMap<Bits::InfoHash, Bits::TorrentView> torrents)
+void TorrentModel::update(NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>> torrents)
 {
-    m_torrents = torrents;
-    m_hashes = m_torrents.keys();
+    m_torrents = move(torrents);
+    m_hashes = m_torrents->keys();
     did_update(UpdateFlag::DontInvalidateIndices);
 }
 
@@ -107,11 +106,6 @@ void BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> fil
 
     if (start)
         m_engine->start_torrent(info_hash);
-
-    m_torrent_model->update(m_engine->torrents());
-
-    if (m_engine->torrents().size() > 0)
-        m_torrents_table_view->selection().set(m_torrent_model->index(m_torrent_model->row_count() - 1, 0));
 }
 
 ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine> engine, GUI::Window* window)
@@ -174,8 +168,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
     widget->m_torrents_table_view->on_context_menu_request = [widget, start_torrent_action, stop_torrent_action, cancel_checking_torrent_action](const GUI::ModelIndex& model_index, const GUI::ContextMenuEvent& event) {
         if (model_index.is_valid()) {
             widget->m_torrent_context_menu = GUI::Menu::construct();
-            auto torrents = widget->m_engine->torrents();
-            Bits::TorrentState state = torrents.get(torrents.keys().at(model_index.row())).release_value().state;
+            Bits::TorrentState state = widget->m_torrent_model->torrent_at(model_index.row()).state;
             if (state == Bits::TorrentState::STOPPED || state == Bits::TorrentState::ERROR)
                 widget->m_torrent_context_menu->add_action(start_torrent_action);
             else if (state == Bits::TorrentState::STARTED || state == Bits::TorrentState::SEEDING)
@@ -214,21 +207,19 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
         update_peer_tab_widget();
     };
 
-    widget->m_update_timer = widget->add<Core::Timer>(
-        500, [widget, update_general_tab_widget, update_peer_tab_widget] {
-            auto torrents = widget->m_engine->torrents();
-            widget->m_torrent_model->update(torrents);
-
-            update_general_tab_widget();
-            update_peer_tab_widget();
-
+    widget->m_engine->register_views_update_callback(200, [&, widget, &event_loop = Core::EventLoop::current(), update_general_tab_widget, update_peer_tab_widget] (NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>> torrents) {
+        event_loop.deferred_invoke([&, widget, update_general_tab_widget, update_peer_tab_widget, torrents = move(torrents)] () mutable {
             u64 progress = 0;
-            for (auto const& torrent : torrents) {
+            for (auto const& torrent : *torrents) {
                 progress += torrent.value.progress;
             }
-            warn("\033]9;{};{};\033\\", progress, torrents.size() * 100);
+            warn("\033]9;{};{};\033\\", progress, torrents->size() * 100);
+
+            widget->m_torrent_model->update(move(torrents));
+            update_general_tab_widget();
+            update_peer_tab_widget();
         });
-    widget->m_update_timer->start();
+    });
 
     return widget;
 }

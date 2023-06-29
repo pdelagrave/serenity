@@ -27,16 +27,18 @@ public:
     ~Engine();
 
     void add_torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
-    HashMap<InfoHash, TorrentView> torrents();
     void start_torrent(InfoHash info_hash);
     void stop_torrent(InfoHash);
     void cancel_checking(InfoHash);
+
+    void register_views_update_callback(int interval_ms, Function<void(NonnullOwnPtr<HashMap<InfoHash, TorrentView>>)> callback);
 
 private:
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
 
     Engine(NonnullRefPtr<Protocol::RequestClient>, bool skip_checking, bool assume_valid);
+    NonnullOwnPtr<HashMap<InfoHash, TorrentView>> torrents_views();
     static ErrorOr<String> url_encode_bytes(u8 const* bytes, size_t length);
     static ErrorOr<void> create_file(DeprecatedString const& path);
 
@@ -62,6 +64,7 @@ private:
     HashMap<InfoHash, NonnullRefPtr<TorrentContext>> m_torrent_contexts;
     HashMap<ConnectionId, NonnullRefPtr<Peer>> m_connecting_peers;
     HashMap<ConnectionId, NonnullRefPtr<PeerContext>> m_connected_peers;
+    NonnullOwnPtr<HashMap<ConnectionId, ConnectionStats>> m_connection_stats { make<HashMap<ConnectionId, ConnectionStats>>() };
 
     void connect_more_peers(NonnullRefPtr<TorrentContext>);
     u64 get_available_peers_count(NonnullRefPtr<TorrentContext> torrent) const;
