@@ -35,7 +35,7 @@ public:
         return Column::__Count;
     }
 
-    virtual String column_name(int column) const override
+    virtual ErrorOr<String> column_name(int column) const override
     {
         switch (column) {
         case Column::Connected:

@@ -15,7 +15,7 @@
 class TorrentModel final : public GUI::Model {
 public:
     virtual int column_count(GUI::ModelIndex const& index= GUI::ModelIndex()) const override;
-    virtual String column_name(int i) const override;
+    virtual ErrorOr<String> column_name(int i) const override;
     virtual GUI::Variant data(GUI::ModelIndex const& index, GUI::ModelRole role) const override;
     virtual int row_count(GUI::ModelIndex const& index = GUI::ModelIndex()) const override;
 

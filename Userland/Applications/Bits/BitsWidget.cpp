@@ -22,7 +22,7 @@ int TorrentModel::column_count(GUI::ModelIndex const&) const
     return Column::__Count;
 }
 
-String TorrentModel::column_name(int column) const
+ErrorOr<String> TorrentModel::column_name(int column) const
 {
     switch (column) {
     case Column::Name:
