@@ -9,6 +9,7 @@
 #include <AK/DeprecatedString.h>
 #include <AK/Format.h>
 #include <AK/Forward.h>
+#include <AK/Random.h>
 #include <AK/Span.h>
 #include <AK/Types.h>
 
@@ -28,10 +29,14 @@ public:
         memcpy(m_data, other.m_data, size);
     }
 
-    FixedSizeByteString() = delete;
     [[nodiscard]] ReadonlyBytes bytes() const
     {
         return { m_data, size };
+    }
+
+    static FixedSizeByteString random()
+    {
+        return {};
     }
 
     constexpr FixedSizeByteString& operator=(FixedSizeByteString const& other) = default;
@@ -49,6 +54,7 @@ public:
     }
 
 private:
+    FixedSizeByteString() { fill_with_random({ m_data, size }); }
     u8 m_data[size] {};
 };
 
@@ -67,7 +73,6 @@ struct AK::Formatter<Bits::FixedSizeByteString<size>> : AK::Formatter<FormatStri
         return {};
     }
 };
-
 
 template<size_t size>
 struct AK::Traits<Bits::FixedSizeByteString<size>> : public GenericTraits<Bits::FixedSizeByteString<size>> {

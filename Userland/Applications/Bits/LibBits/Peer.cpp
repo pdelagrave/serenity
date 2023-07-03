@@ -5,14 +5,14 @@
 */
 
 #include "Peer.h"
-#include "TorrentContext.h"
+#include "Torrent.h"
 #include "PeerContext.h"
 
 namespace Bits {
 
-Peer::Peer(Core::SocketAddress address, NonnullRefPtr<TorrentContext> tcontext)
+Peer::Peer(Core::SocketAddress address, NonnullRefPtr<Torrent> torrent)
     : address(move(address))
-    , torrent_context(move(tcontext))
+    , torrent(move(torrent))
 {
 }
 

@@ -16,7 +16,6 @@ set(SOURCES
         LibBits/PeerContext.cpp
         LibBits/Peer.cpp
         LibBits/PieceHeap.cpp
-        LibBits/TorrentContext.cpp
         LibBits/TorrentDataFileMap.cpp
         LibBits/Torrent.cpp
         Tabs/GeneralTorrentInfoWidget.cpp

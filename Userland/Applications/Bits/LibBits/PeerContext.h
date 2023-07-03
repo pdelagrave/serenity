@@ -14,7 +14,7 @@
 
 namespace Bits {
 
-struct TorrentContext;
+struct Torrent;
 struct Peer;
 
 struct PeerContext : public RefCounted<PeerContext> {

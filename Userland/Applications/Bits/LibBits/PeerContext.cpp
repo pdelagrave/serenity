@@ -6,7 +6,7 @@
 
 #include "PeerContext.h"
 #include "Peer.h"
-#include "TorrentContext.h"
+#include "Torrent.h"
 
 namespace Bits {
 
@@ -14,7 +14,7 @@ PeerContext::PeerContext(NonnullRefPtr<Peer> peer, ConnectionId connection_id, P
     : peer(peer)
     , connection_id(connection_id)
     , id(id)
-    , bitfield(peer->torrent_context->piece_count)
+    , bitfield(peer->torrent->piece_count)
 {
 }
 

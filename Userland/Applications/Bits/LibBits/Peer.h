@@ -18,13 +18,13 @@ enum class PeerStatus {
     Errored
 };
 
-struct TorrentContext;
+struct Torrent;
 
 struct Peer : public RefCounted<Peer> {
-    Peer(Core::SocketAddress address, NonnullRefPtr<TorrentContext> tcontext);
+    Peer(Core::SocketAddress address, NonnullRefPtr<Torrent> torrent);
 
     const Core::SocketAddress address;
-    NonnullRefPtr<TorrentContext> const torrent_context;
+    NonnullRefPtr<Torrent> const torrent;
     PeerStatus status = PeerStatus::Available;
 
     // FIXME ugly hack, should not be used to temporarily save the id before creating the peercontext.

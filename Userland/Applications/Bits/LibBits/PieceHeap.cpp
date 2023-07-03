@@ -6,7 +6,7 @@
 
 #include "PieceHeap.h"
 #include "PeerContext.h"
-#include "TorrentContext.h"
+#include "Torrent.h"
 #include "Peer.h"
 
 namespace Bits {

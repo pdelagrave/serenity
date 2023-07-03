@@ -26,8 +26,20 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
         local_files->append(make_ref_counted<LocalFile>(move(local_path), move(f)));
     }
 
-    NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(move(meta_info), move(local_files), root_data_path);
-    auto info_hash = InfoHash({ torrent->meta_info().info_hash() });
+    auto info_hash = InfoHash({ meta_info->info_hash() });
+    NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(
+        meta_info->root_dir_name().value_or(meta_info->files()[0]->path()),
+        move(local_files),
+        root_data_path,
+        info_hash,
+        PeerId::random(),
+        meta_info->total_length(),
+        meta_info->piece_length(),
+        27007,
+        make<TorrentDataFileMap>(meta_info->piece_hashes(), meta_info->piece_length(), make<Vector<NonnullRefPtr<LocalFile>>>(*local_files))
+        );
+    torrent->announce_url = meta_info->announce();
+
     m_torrents.set(info_hash, move(torrent));
 }
 
@@ -35,38 +47,32 @@ NonnullOwnPtr<HashMap<InfoHash, TorrentView>> Engine::torrents_views()
 {
     auto views = make<HashMap<InfoHash, TorrentView>>();
     for (auto const& [info_hash, torrent] : m_torrents) {
-        auto maybe_tcontext = m_torrent_contexts.get(info_hash);
-        if (maybe_tcontext.has_value()) {
-            auto tcontext = maybe_tcontext.release_value();
-            Vector<PeerView> pviews;
-            pviews.ensure_capacity(tcontext->connected_peers.size());
+        Vector<PeerView> pviews;
+        pviews.ensure_capacity(torrent->connected_peers.size());
 
-            tcontext->download_speed = 0;
-            tcontext->upload_speed = 0;
-            for (auto const& peer : tcontext->connected_peers) {
-                const auto& stats = m_connection_stats->get(peer->connection_id).value_or({});
-                pviews.append(PeerView(
-                    peer->id,
-                    peer->peer->address.ipv4_address().to_deprecated_string(),
-                    peer->peer->address.port(),
-                    peer->bitfield.progress(),
-                    stats.download_speed,
-                    stats.upload_speed,
-                    stats.bytes_downloaded,
-                    stats.bytes_uploaded,
-                    peer->we_are_choking_peer,
-                    peer->peer_is_choking_us,
-                    peer->we_are_interested_in_peer,
-                    peer->peer_is_interested_in_us,
-                    true));
-                tcontext->download_speed += stats.download_speed;
-                tcontext->upload_speed += stats.upload_speed;
-            }
-
-            views->set(info_hash, TorrentView(info_hash, torrent->display_name(), tcontext->total_length, torrent->state(), tcontext->local_bitfield.progress(), tcontext->download_speed, tcontext->upload_speed, torrent->data_path(), pviews, tcontext->local_bitfield));
-        } else {
-            views->set(info_hash, TorrentView(info_hash, torrent->display_name(), torrent->meta_info().total_length(), torrent->state(), 0, 0, 0, torrent->data_path(), {}, { (u64)torrent->meta_info().total_length() }));
+        torrent->download_speed = 0;
+        torrent->upload_speed = 0;
+        for (auto const& peer : torrent->connected_peers) {
+            const auto& stats = m_connection_stats->get(peer->connection_id).value_or({});
+            pviews.append(PeerView(
+                peer->id,
+                peer->peer->address.ipv4_address().to_deprecated_string(),
+                peer->peer->address.port(),
+                peer->bitfield.progress(),
+                stats.download_speed,
+                stats.upload_speed,
+                stats.bytes_downloaded,
+                stats.bytes_uploaded,
+                peer->we_are_choking_peer,
+                peer->peer_is_choking_us,
+                peer->we_are_interested_in_peer,
+                peer->peer_is_interested_in_us,
+                true));
+            torrent->download_speed += stats.download_speed;
+            torrent->upload_speed += stats.upload_speed;
         }
+
+        views->set(info_hash, TorrentView(info_hash, torrent->display_name, torrent->total_length, torrent->state, torrent->local_bitfield.progress(), torrent->download_speed, torrent->upload_speed, torrent->data_path, pviews, torrent->local_bitfield));
     }
 
     return views;
@@ -139,19 +145,19 @@ void Engine::start_torrent(InfoHash info_hash)
 {
     deferred_invoke([this, info_hash]() {
         NonnullRefPtr<Torrent> torrent = *m_torrents.get(info_hash).value();
-        torrent->set_state(TorrentState::CHECKING);
+        torrent->state = TorrentState::CHECKING;
 
-        for (auto local_file : *torrent->local_files()) {
+        for (auto local_file : *torrent->local_files) {
             auto err = create_file(local_file->local_path());
             if (err.is_error()) {
                 dbgln("error creating file: {}", err.error());
-                torrent->set_state(TorrentState::ERROR);
+                torrent->state = TorrentState::ERROR;
                 return;
             }
             auto fe = Core::File::open(local_file->local_path(), Core::File::OpenMode::ReadWrite);
             if (fe.is_error()) {
                 dbgln("error opening file: {}", fe.error());
-                torrent->set_state(TorrentState::ERROR);
+                torrent->state = TorrentState::ERROR;
                 return;
             }
             auto f = fe.release_value();
@@ -159,7 +165,7 @@ void Engine::start_torrent(InfoHash info_hash)
             auto x = Core::System::posix_fallocate(f->fd(), 0, local_file->meta_info_file()->length());
             if (x.is_error()) {
                 dbgln("error posix_fallocating file: {}", x.error());
-                torrent->set_state(TorrentState::ERROR);
+                torrent->state = TorrentState::ERROR;
                 return;
             }
             f->close();
@@ -167,39 +173,30 @@ void Engine::start_torrent(InfoHash info_hash)
 
         torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent, info_hash, origin_event_loop = &Core::EventLoop::current()](BitField local_bitfield) {
             // Checking finished callback, still on the background thread
-            torrent->set_state(TorrentState::STARTED);
+            torrent->state = TorrentState::STARTED;
             // announcing using the UI thread/loop:
             origin_event_loop->deferred_invoke([this, torrent, info_hash, local_bitfield = move(local_bitfield)] {
-                dbgln("we have {}/{} pieces", local_bitfield.ones(), torrent->piece_count());
+                dbgln("we have {}/{} pieces", local_bitfield.ones(), torrent->piece_count);
 
-                auto tcontext = make_ref_counted<TorrentContext>(info_hash,
-                    PeerId(torrent->local_peer_id()),
-                    (u64)torrent->meta_info().total_length(),
-                    (u64)torrent->meta_info().piece_length(),
-                    torrent->local_port(),
-                    local_bitfield,
-                    torrent->data_file_map().release_nonnull());
-
-                for (u64 i = 0; i < tcontext->piece_count; i++) {
-                    if (!tcontext->local_bitfield.get(i))
-                        tcontext->missing_pieces.set(i, make_ref_counted<PieceStatus>(i));
+                for (u64 i = 0; i < torrent->piece_count; i++) {
+                    if (!torrent->local_bitfield.get(i))
+                        torrent->missing_pieces.set(i, make_ref_counted<PieceStatus>(i));
                 }
-                m_torrent_contexts.set(tcontext->info_hash, tcontext);
 
-                announce(*torrent, [this, tcontext, info_hash](auto peers) {
+                announce(*torrent, [this, torrent, info_hash](auto peers) {
                     // announce finished callback, now on the UI loop/thread
                     // TODO: if we seed, we don't add peers.
                     dbgln("Peers ({}) from tracker:", peers.size());
                     for (auto& peer : peers) {
                         dbgln("{}", peer);
                     }
-                    if (tcontext->local_bitfield.progress() < 100) {
+                    if (torrent->local_bitfield.progress() < 100) {
                         for (auto const& peer_address : peers) {
                             // TODO algo for dupes, deleted (tracker announce doesn't return one anymore and we're downloading/uploading from it?)
                             // assuming peers are added only once
-                            tcontext->peers.append(make_ref_counted<Peer>(peer_address, tcontext));
+                            torrent->peers.append(make_ref_counted<Peer>(peer_address, torrent));
                         }
-                        connect_more_peers(*tcontext);
+                        connect_more_peers(*torrent);
                     }
                 }).release_value_but_fixme_should_propagate_errors();
             });
@@ -210,18 +207,17 @@ void Engine::start_torrent(InfoHash info_hash)
 void Engine::stop_torrent(InfoHash info_hash)
 {
     auto torrent = m_torrents.get(info_hash).value();
-    torrent->set_state(TorrentState::STOPPED);
-    for (auto& pcontext : m_torrent_contexts.get(info_hash).value()->connected_peers) {
+    torrent->state = TorrentState::STOPPED;
+    for (auto& pcontext : m_torrents.get(info_hash).value()->connected_peers) {
         m_comm.close_connection(pcontext->connection_id, "Stopping torrent");
     }
-    m_torrent_contexts.remove(info_hash);
 }
 
 void Engine::cancel_checking(InfoHash info_hash)
 {
     auto torrent = m_torrents.get(info_hash).value();
     torrent->cancel_checking();
-    torrent->set_state(TorrentState::STOPPED);
+    torrent->state = TorrentState::STOPPED;
 }
 
 void Engine::register_views_update_callback(int interval_ms, Function<void(NonnullOwnPtr<HashMap<InfoHash, TorrentView>>)> views_updated)
@@ -233,27 +229,27 @@ void Engine::register_views_update_callback(int interval_ms, Function<void(Nonnu
     });
 }
 
-ErrorOr<String> Engine::url_encode_bytes(u8 const* bytes, size_t length)
+DeprecatedString Engine::url_encode_bytes(ReadonlyBytes bytes)
 {
     StringBuilder builder;
-    for (size_t i = 0; i < length; ++i) {
+    for (size_t i = 0; i < bytes.size(); ++i) {
         builder.appendff("%{:02X}", bytes[i]);
     }
-    return builder.to_string();
+    return builder.to_deprecated_string();
 }
 
 // TODO: don't use torrent as a parameter and use exactly what we need instead. We'll also probably soon require to return more than just the peer list.
 ErrorOr<void> Engine::announce(Torrent& torrent, Function<void(Vector<Core::SocketAddress>)> on_complete)
 {
-    auto info_hash = TRY(url_encode_bytes(torrent.meta_info().info_hash().data(), 20));
-    auto my_peer_id = TRY(url_encode_bytes(torrent.local_peer_id().data(), 20));
-    auto url = URL(torrent.meta_info().announce());
+    auto info_hash = url_encode_bytes(torrent.info_hash.bytes());
+    auto my_peer_id = url_encode_bytes(torrent.local_peer_id.bytes());
+    auto url = torrent.announce_url;
 
     // https://www.bittorrent.org/beps/bep_0007.html
     // should be generated per session per torrent.
     u64 key = get_random<u64>();
 
-    url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&uploaded=1&downloaded=1&left=10&key={}", info_hash, my_peer_id, torrent.local_port(), key)).to_deprecated_string());
+    url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&uploaded=1&downloaded=1&left=10&key={}", info_hash, my_peer_id, torrent.local_port, key)).to_deprecated_string());
     dbgln("query: {}", url.query());
     auto request = m_protocol_client->start_request("GET", url);
     m_active_requests.set(*request);
@@ -339,10 +335,10 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
             auto peer = maybe_peer.release_value();
             auto pcontext = make_ref_counted<PeerContext>(peer, connection_id, peer->id_from_handshake.value());
             m_connected_peers.set(connection_id, pcontext);
-            peer->torrent_context->connected_peers.set(pcontext);
+            peer->torrent->connected_peers.set(pcontext);
 
             dbgln("Peer connected: {}", *peer);
-            m_comm.send_message(connection_id, make<BitFieldMessage>(peer->torrent_context->local_bitfield));
+            m_comm.send_message(connection_id, make<BitFieldMessage>(peer->torrent->local_bitfield));
         });
     };
 
@@ -352,7 +348,7 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
             VERIFY(maybe_peer.has_value());
             auto peer = maybe_peer.release_value();
 
-            if (peer->torrent_context->info_hash != handshake.info_hash()) {
+            if (peer->torrent->info_hash != handshake.info_hash()) {
                 dbgln("Peer sent a handshake with the wrong torrent info hash, disconnecting.");
                 accept_connection(false);
                 return;
@@ -368,23 +364,23 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
             VERIFY(!m_connecting_peers.contains(connection_id));
             VERIFY(!m_connected_peers.contains(connection_id));
 
-            auto maybe_tcontext = m_torrent_contexts.get(handshake.info_hash());
-            if (maybe_tcontext.has_value()) {
+            auto maybe_torrent = m_torrents.get(handshake.info_hash());
+            if (maybe_torrent.has_value()) {
                 // TODO: Add more checks before accepting the connection.
-                auto tcontext = maybe_tcontext.release_value();
-                if (tcontext->local_peer_id == handshake.peer_id()) {
+                auto torrent = maybe_torrent.release_value();
+                if (torrent->local_peer_id == handshake.peer_id()) {
                     dbgln("Refusing connection from ourselves.");
                     accept_connection({});
                     return;
                 }
 
                 // FIXME: The peer likely already exists in tcontext->peers
-                auto peer = make_ref_counted<Peer>(address, *tcontext);
+                auto peer = make_ref_counted<Peer>(address, *torrent);
                 peer->status = PeerStatus::InUse;
                 peer->id_from_handshake = handshake.peer_id();
                 m_connecting_peers.set(connection_id, peer);
 
-                accept_connection(HandshakeMessage(tcontext->info_hash, tcontext->local_peer_id));
+                accept_connection(HandshakeMessage(torrent->info_hash, torrent->local_peer_id));
             } else {
                 dbgln("Peer sent a handshake with an unknown torrent info hash, disconnecting.");
                 accept_connection({});
@@ -399,29 +395,21 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
     };
 }
 
-Engine::~Engine()
-{
-    dbgln("Engine::~Engine()");
-    //    for (auto torrent : m_torrents) {
-    //        torrent->cancel_checking();
-    //    }
-    //    m_torrents.clear();
-}
 ErrorOr<NonnullRefPtr<Engine>> Engine::try_create(bool skip_checking, bool assume_valid)
 {
     auto protocol_client = TRY(Protocol::RequestClient::try_create());
     return adopt_nonnull_ref_or_enomem(new (nothrow) Engine(move(protocol_client), skip_checking, assume_valid));
 }
 
-void Engine::connect_more_peers(NonnullRefPtr<TorrentContext> torrent)
+void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
 {
     u64 total_connections = 0;
-    for (auto const& [_, tcontext] : m_torrent_contexts) {
+    for (auto const& [_, tcontext] : m_torrents) {
         total_connections += tcontext->connected_peers.size();
     }
     u64 total_connections_for_torrent = torrent->connected_peers.size();
     for (auto const& [_, peer] : m_connecting_peers) {
-        if (peer->torrent_context == torrent)
+        if (peer->torrent == torrent)
             total_connections_for_torrent++;
     }
 
@@ -447,7 +435,7 @@ void Engine::connect_more_peers(NonnullRefPtr<TorrentContext> torrent)
     }
 }
 
-u64 Engine::get_available_peers_count(NonnullRefPtr<TorrentContext> torrent) const
+u64 Engine::get_available_peers_count(NonnullRefPtr<Torrent> torrent) const
 {
     u64 count = 0;
     for (auto const& peer : torrent->peers) {
@@ -466,7 +454,7 @@ void Engine::peer_disconnected(ConnectionId connection_id)
         auto peer_context = m_connected_peers.take(connection_id).release_value();
         peer = peer_context->peer;
 
-        auto torrent = peer->torrent_context;
+        auto torrent = peer->torrent;
         for (auto const& piece_index : peer_context->interesting_pieces) {
             torrent->missing_pieces.get(piece_index).value()->havers.remove(peer_context);
         }
@@ -483,13 +471,13 @@ void Engine::peer_disconnected(ConnectionId connection_id)
     peer->status = PeerStatus::Errored;
 
     // FIXME: add another condition to check if the torrent status is still downloading
-    if (peer->torrent_context->local_bitfield.progress() < 100)
-        connect_more_peers(peer->torrent_context);
+    if (peer->torrent->local_bitfield.progress() < 100)
+        connect_more_peers(peer->torrent);
 }
 
 ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerContext> peer)
 {
-    auto torrent = peer->peer->torrent_context;
+    auto torrent = peer->peer->torrent;
     if (TRY(torrent->data_file_map->validate_hash(index, data))) {
         TRY(torrent->data_file_map->write_piece(index, data));
 
@@ -523,7 +511,7 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
                     m_comm.close_connection(connected_peer->connection_id, "Torrent fully downloaded.");
             }
 
-            m_torrents.get(torrent->info_hash).value()->set_state(TorrentState::SEEDING);
+            m_torrents.get(torrent->info_hash).value()->state = TorrentState::SEEDING;
             return {};
         }
     } else {
@@ -534,7 +522,7 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
     return {};
 }
 
-ErrorOr<void> Engine::piece_or_peer_availability_updated(NonnullRefPtr<TorrentContext> torrent)
+ErrorOr<void> Engine::piece_or_peer_availability_updated(NonnullRefPtr<Torrent> torrent)
 {
     size_t available_slots = 0;
     for (auto const& peer : torrent->connected_peers)
@@ -578,7 +566,7 @@ ErrorOr<void> Engine::piece_or_peer_availability_updated(NonnullRefPtr<TorrentCo
 
 ErrorOr<void> Engine::peer_has_piece(u64 piece_index, NonnullRefPtr<PeerContext> peer)
 {
-    auto& torrent = peer->peer->torrent_context;
+    auto& torrent = peer->peer->torrent;
     auto piece_status = torrent->missing_pieces.get(piece_index).value();
     piece_status->havers.set(peer);
 
@@ -600,7 +588,7 @@ ErrorOr<void> Engine::peer_has_piece(u64 piece_index, NonnullRefPtr<PeerContext>
     return {};
 }
 
-void Engine::insert_piece_in_heap(NonnullRefPtr<TorrentContext> torrent, u64 piece_index)
+void Engine::insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_index)
 {
     auto piece_status = torrent->missing_pieces.get(piece_index).value();
     piece_status->currently_downloading = false;
@@ -620,11 +608,11 @@ ErrorOr<void> Engine::parse_input_message(ConnectionId connection_id, ReadonlyBy
     switch (message_type) {
     case MessageType::Choke:
         peer->peer_is_choking_us = true;
-        TRY(piece_or_peer_availability_updated(peer->peer->torrent_context));
+        TRY(piece_or_peer_availability_updated(peer->peer->torrent));
         break;
     case MessageType::Unchoke:
         peer->peer_is_choking_us = false;
-        TRY(piece_or_peer_availability_updated(peer->peer->torrent_context));
+        TRY(piece_or_peer_availability_updated(peer->peer->torrent));
         break;
     case MessageType::Interested:
         TRY(handle_interested(peer));
@@ -636,7 +624,7 @@ ErrorOr<void> Engine::parse_input_message(ConnectionId connection_id, ReadonlyBy
         TRY(handle_have(make<HaveMessage>(stream), peer));
         break;
     case MessageType::Bitfield:
-        TRY(handle_bitfield(make<BitFieldMessage>(stream, peer->peer->torrent_context->piece_count), peer));
+        TRY(handle_bitfield(make<BitFieldMessage>(stream, peer->peer->torrent->piece_count), peer));
         break;
     case MessageType::Request:
         TRY(handle_request(make<RequestMessage>(stream), peer));
@@ -660,7 +648,7 @@ ErrorOr<void> Engine::handle_bitfield(NonnullOwnPtr<BitFieldMessage> bitfield, N
     dbgln("Receiving BitField from peer: {}", peer->bitfield);
 
     bool interesting = false;
-    auto torrent = peer->peer->torrent_context;
+    auto torrent = peer->peer->torrent;
     for (auto& missing_piece : torrent->missing_pieces.keys()) {
         if (peer->bitfield.get(missing_piece)) {
             interesting = true;
@@ -698,7 +686,7 @@ ErrorOr<void> Engine::handle_have(NonnullOwnPtr<HaveMessage> have_message, Nonnu
     dbgln("Peer has piece {}, setting in peer bitfield, bitfield size: {}", piece_index, peer->bitfield.size());
     peer->bitfield.set(piece_index, true);
 
-    if (peer->peer->torrent_context->missing_pieces.contains(piece_index)) {
+    if (peer->peer->torrent->missing_pieces.contains(piece_index)) {
         TRY(peer_has_piece(piece_index, peer));
         if (!peer->we_are_interested_in_peer) {
             m_comm.send_message(peer->connection_id, make<UnchokeMessage>());
@@ -707,9 +695,9 @@ ErrorOr<void> Engine::handle_have(NonnullOwnPtr<HaveMessage> have_message, Nonnu
             m_comm.send_message(peer->connection_id, make<InterestedMessage>());
             peer->we_are_interested_in_peer = true;
         }
-        TRY(piece_or_peer_availability_updated(peer->peer->torrent_context));
+        TRY(piece_or_peer_availability_updated(peer->peer->torrent));
     } else {
-        if (peer->bitfield.progress() == 100 && peer->peer->torrent_context->local_bitfield.progress() == 100) {
+        if (peer->bitfield.progress() == 100 && peer->peer->torrent->local_bitfield.progress() == 100) {
             m_comm.close_connection(peer->connection_id, "Peer and us have all pieces, disconnecting");
         }
     }
@@ -727,7 +715,7 @@ ErrorOr<void> Engine::handle_interested(NonnullRefPtr<Bits::PeerContext> peer)
 
 ErrorOr<void> Engine::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, NonnullRefPtr<PeerContext> peer)
 {
-    auto torrent = peer->peer->torrent_context;
+    auto torrent = peer->peer->torrent;
     auto block_size = piece_message->block.size();
     auto index = piece_message->piece_index;
     auto begin = piece_message->begin_offset;
@@ -770,7 +758,7 @@ ErrorOr<void> Engine::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, No
 ErrorOr<void> Engine::handle_request(NonnullOwnPtr<RequestMessage> request, NonnullRefPtr<PeerContext> peer)
 {
     // TODO: validate request parameters, disconnect peer if they're invalid.
-    auto torrent = peer->peer->torrent_context;
+    auto torrent = peer->peer->torrent;
     auto piece = TRY(ByteBuffer::create_uninitialized(torrent->piece_length(request->piece_index)));
     TRY(torrent->data_file_map->read_piece(request->piece_index, piece));
 
