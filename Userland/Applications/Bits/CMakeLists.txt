@@ -9,6 +9,7 @@ set(SOURCES
         LibBits/Bencode/BEncoder.cpp
         LibBits/Net/Comm.cpp
         LibBits/Net/Connection.cpp
+        LibBits/Announcer.cpp
         LibBits/BitField.cpp
         LibBits/BitTorrentMessage.cpp
         LibBits/Engine.cpp

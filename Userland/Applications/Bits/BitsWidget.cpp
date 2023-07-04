@@ -213,8 +213,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
             for (auto const& torrent : *torrents) {
                 progress += torrent.value.progress;
             }
-            warn("\033]9;{};{};\033\\", progress, torrents->size() * 100);
-
+            widget->window()->set_progress(progress / torrents->size());
             widget->m_torrent_model->update(move(torrents));
             update_general_tab_widget();
             update_peer_tab_widget();

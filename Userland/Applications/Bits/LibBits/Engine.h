@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "Announcer.h"
 #include "FixedSizeByteString.h"
 #include "MetaInfo.h"
 #include "Net/Comm.h"
@@ -15,7 +16,6 @@
 #include "TorrentView.h"
 #include <AK/HashMap.h>
 #include <LibCore/Object.h>
-#include <LibProtocol/RequestClient.h>
 
 namespace Bits {
 
@@ -23,8 +23,6 @@ class Engine : public Core::Object {
     C_OBJECT(Engine);
 
 public:
-    static ErrorOr<NonnullRefPtr<Engine>> try_create(bool skip_checking, bool assume_valid);
-
     void add_torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
     void start_torrent(InfoHash info_hash);
     void stop_torrent(InfoHash);
@@ -36,16 +34,12 @@ private:
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
 
-    Engine(NonnullRefPtr<Protocol::RequestClient>, bool skip_checking, bool assume_valid);
+    Engine(bool skip_checking, bool assume_valid);
     NonnullOwnPtr<HashMap<InfoHash, TorrentView>> torrents_views();
-    static DeprecatedString url_encode_bytes(ReadonlyBytes bytes);
     static ErrorOr<void> create_file(DeprecatedString const& path);
 
-    NonnullRefPtr<Protocol::RequestClient> m_protocol_client;
-    HashTable<NonnullRefPtr<Protocol::Request>> m_active_requests;
-
+    HashMap<InfoHash, NonnullRefPtr<Announcer>> m_announcers;
     HashMap<InfoHash, NonnullRefPtr<Torrent>> m_torrents;
-    ErrorOr<void> announce(Torrent& torrent, Function<void(Vector<Core::SocketAddress>)> on_complete);
 
     Comm m_comm;
     bool m_skip_checking;

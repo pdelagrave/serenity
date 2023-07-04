@@ -7,7 +7,6 @@
 #include "Engine.h"
 #include <AK/LexicalPath.h>
 #include <LibFileSystem/FileSystem.h>
-#include <LibProtocol/Request.h>
 
 namespace Bits {
 
@@ -36,8 +35,7 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
         meta_info->total_length(),
         meta_info->piece_length(),
         27007,
-        make<TorrentDataFileMap>(meta_info->piece_hashes(), meta_info->piece_length(), make<Vector<NonnullRefPtr<LocalFile>>>(*local_files))
-        );
+        make<TorrentDataFileMap>(meta_info->piece_hashes(), meta_info->piece_length(), make<Vector<NonnullRefPtr<LocalFile>>>(*local_files)));
     torrent->announce_url = meta_info->announce();
 
     m_torrents.set(info_hash, move(torrent));
@@ -53,7 +51,7 @@ NonnullOwnPtr<HashMap<InfoHash, TorrentView>> Engine::torrents_views()
         torrent->download_speed = 0;
         torrent->upload_speed = 0;
         for (auto const& peer : torrent->connected_peers) {
-            const auto& stats = m_connection_stats->get(peer->connection_id).value_or({});
+            auto const& stats = m_connection_stats->get(peer->connection_id).value_or({});
             pviews.append(PeerView(
                 peer->id,
                 peer->peer->address.ipv4_address().to_deprecated_string(),
@@ -143,7 +141,7 @@ ErrorOr<void> Engine::create_file(const AK::DeprecatedString& absolute_path)
 
 void Engine::start_torrent(InfoHash info_hash)
 {
-    deferred_invoke([this, info_hash]() {
+    m_event_loop->deferred_invoke([this, info_hash]() {
         NonnullRefPtr<Torrent> torrent = *m_torrents.get(info_hash).value();
         torrent->state = TorrentState::CHECKING;
 
@@ -171,11 +169,11 @@ void Engine::start_torrent(InfoHash info_hash)
             f->close();
         }
 
-        torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent, info_hash, origin_event_loop = &Core::EventLoop::current()](BitField local_bitfield) {
+        torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent, info_hash](BitField local_bitfield) {
             // Checking finished callback, still on the background thread
             torrent->state = TorrentState::STARTED;
             // announcing using the UI thread/loop:
-            origin_event_loop->deferred_invoke([this, torrent, info_hash, local_bitfield = move(local_bitfield)] {
+            m_event_loop->deferred_invoke([this, torrent, info_hash, local_bitfield = move(local_bitfield)] {
                 dbgln("we have {}/{} pieces", local_bitfield.ones(), torrent->piece_count);
 
                 for (u64 i = 0; i < torrent->piece_count; i++) {
@@ -183,22 +181,21 @@ void Engine::start_torrent(InfoHash info_hash)
                         torrent->missing_pieces.set(i, make_ref_counted<PieceStatus>(i));
                 }
 
-                announce(*torrent, [this, torrent, info_hash](auto peers) {
-                    // announce finished callback, now on the UI loop/thread
-                    // TODO: if we seed, we don't add peers.
-                    dbgln("Peers ({}) from tracker:", peers.size());
-                    for (auto& peer : peers) {
-                        dbgln("{}", peer);
-                    }
-                    if (torrent->local_bitfield.progress() < 100) {
+                auto get_stats_for_announce = [torrent]() -> AnnounceStats {
+                    return { 0, 0, torrent->local_bitfield.zeroes() * torrent->nominal_piece_length };
+                };
+
+                auto on_announce_success = [this, torrent, info_hash](Vector<Core::SocketAddress> peers) {
+                    if (torrent->state == TorrentState::STARTED) {
                         for (auto const& peer_address : peers) {
-                            // TODO algo for dupes, deleted (tracker announce doesn't return one anymore and we're downloading/uploading from it?)
-                            // assuming peers are added only once
-                            torrent->peers.append(make_ref_counted<Peer>(peer_address, torrent));
+                            if (!torrent->peers.contains(peer_address))
+                                torrent->peers.set(peer_address, make_ref_counted<Peer>(peer_address, torrent));
                         }
-                        connect_more_peers(*torrent);
+                        connect_more_peers(torrent);
                     }
-                }).release_value_but_fixme_should_propagate_errors();
+                };
+
+                m_announcers.set(info_hash, MUST(Announcer::create(info_hash, torrent->announce_url, torrent->local_peer_id, torrent->local_port, torrent->tracker_session_key, move(get_stats_for_announce), move(on_announce_success))));
             });
         });
     });
@@ -206,11 +203,16 @@ void Engine::start_torrent(InfoHash info_hash)
 
 void Engine::stop_torrent(InfoHash info_hash)
 {
-    auto torrent = m_torrents.get(info_hash).value();
-    torrent->state = TorrentState::STOPPED;
-    for (auto& pcontext : m_torrents.get(info_hash).value()->connected_peers) {
-        m_comm.close_connection(pcontext->connection_id, "Stopping torrent");
-    }
+    m_event_loop->deferred_invoke([&, info_hash] {
+        // Notify the tracker that we're stopping then stop announcing
+        m_announcers.take(info_hash).value()->stopped();
+
+        auto torrent = m_torrents.get(info_hash).value();
+        torrent->state = TorrentState::STOPPED;
+        for (auto& pcontext : m_torrents.get(info_hash).value()->connected_peers) {
+            m_comm.close_connection(pcontext->connection_id, "Stopping torrent");
+        }
+    });
 }
 
 void Engine::cancel_checking(InfoHash info_hash)
@@ -222,85 +224,15 @@ void Engine::cancel_checking(InfoHash info_hash)
 
 void Engine::register_views_update_callback(int interval_ms, Function<void(NonnullOwnPtr<HashMap<InfoHash, TorrentView>>)> views_updated)
 {
-    m_event_loop->deferred_invoke([&, interval_ms, views_updated = move(views_updated)] () mutable {
+    m_event_loop->deferred_invoke([&, interval_ms, views_updated = move(views_updated)]() mutable {
         add<Core::Timer>(interval_ms, [&, views_updated = move(views_updated)] {
             views_updated(torrents_views());
         }).start();
     });
 }
 
-DeprecatedString Engine::url_encode_bytes(ReadonlyBytes bytes)
-{
-    StringBuilder builder;
-    for (size_t i = 0; i < bytes.size(); ++i) {
-        builder.appendff("%{:02X}", bytes[i]);
-    }
-    return builder.to_deprecated_string();
-}
-
-// TODO: don't use torrent as a parameter and use exactly what we need instead. We'll also probably soon require to return more than just the peer list.
-ErrorOr<void> Engine::announce(Torrent& torrent, Function<void(Vector<Core::SocketAddress>)> on_complete)
-{
-    auto info_hash = url_encode_bytes(torrent.info_hash.bytes());
-    auto my_peer_id = url_encode_bytes(torrent.local_peer_id.bytes());
-    auto url = torrent.announce_url;
-
-    // https://www.bittorrent.org/beps/bep_0007.html
-    // should be generated per session per torrent.
-    u64 key = get_random<u64>();
-
-    url.set_query(TRY(String::formatted("info_hash={}&peer_id={}&port={}&uploaded=1&downloaded=1&left=10&key={}", info_hash, my_peer_id, torrent.local_port, key)).to_deprecated_string());
-    dbgln("query: {}", url.query());
-    auto request = m_protocol_client->start_request("GET", url);
-    m_active_requests.set(*request);
-
-    request->on_buffered_request_finish = [this, &request = *request, on_complete = move(on_complete)](bool success, auto total_size, auto&, auto status_code, ReadonlyBytes payload) {
-        auto err = [&]() -> ErrorOr<void> {
-            dbgln("We got back the payload, size: {}, success: {}, status_code: {}", total_size, success, status_code);
-            auto response = TRY(BDecoder::parse<Dict>(payload));
-
-            if (response.contains("failure reason")) {
-                dbgln("Failure:  {}", response.get_string("failure reason"));
-                return {};
-            }
-            // dbgln("interval: {}", response.get<i64>("interval"));
-            Vector<Core::SocketAddress> peers;
-            if (response.has<List>("peers")) {
-                for (auto peer : response.get<List>("peers")) {
-                    auto peer_dict = peer.get<Dict>();
-                    auto ip_address = IPv4Address::from_string(peer_dict.get_string("ip"));
-                    // TODO: check if ip string is a host name and resolve it.
-                    VERIFY(ip_address.has_value());
-                    peers.append({ ip_address.value(), static_cast<u16>(peer_dict.get<i64>("port")) });
-                }
-            } else {
-                // https://www.bittorrent.org/beps/bep_0023.html compact peers list
-                auto peers_bytes = response.get<ByteBuffer>("peers");
-                VERIFY(peers_bytes.size() % 6 == 0);
-                auto stream = FixedMemoryStream(peers_bytes.bytes());
-                while (!stream.is_eof())
-                    peers.append({ TRY(stream.read_value<NetworkOrdered<u32>>()), TRY(stream.read_value<NetworkOrdered<u16>>()) });
-            }
-
-            on_complete(move(peers));
-
-            return {};
-        }.operator()();
-        if (err.is_error()) {
-            dbgln("Error announcing: {}", err.error().string_literal());
-        }
-        deferred_invoke([this, &request]() {
-            m_active_requests.remove(request);
-        });
-    };
-    request->set_should_buffer_all_input(true);
-
-    return {};
-}
-
-Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip_checking, bool assume_valid)
-    : m_protocol_client(protocol_client)
-    , m_skip_checking(skip_checking)
+Engine::Engine(bool skip_checking, bool assume_valid)
+    : m_skip_checking(skip_checking)
     , m_assume_valid(assume_valid)
 {
     m_thread = Threading::Thread::construct([this]() -> intptr_t {
@@ -395,12 +327,6 @@ Engine::Engine(NonnullRefPtr<Protocol::RequestClient> protocol_client, bool skip
     };
 }
 
-ErrorOr<NonnullRefPtr<Engine>> Engine::try_create(bool skip_checking, bool assume_valid)
-{
-    auto protocol_client = TRY(Protocol::RequestClient::try_create());
-    return adopt_nonnull_ref_or_enomem(new (nothrow) Engine(move(protocol_client), skip_checking, assume_valid));
-}
-
 void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
 {
     u64 total_connections = 0;
@@ -417,8 +343,8 @@ void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
     dbgln("We have {} available slots for new connections", available_slots);
 
     auto peer_it = torrent->peers.begin();
-    while (available_slots > 0 && !peer_it.is_end()) {
-        auto& peer = *peer_it;
+    while (available_slots > 0 && peer_it != torrent->peers.end()) {
+        auto& peer = peer_it->value;
         if (peer->status == PeerStatus::Available) {
             auto maybe_conn_id = m_comm.connect(peer->address, HandshakeMessage(torrent->info_hash, torrent->local_peer_id));
             if (maybe_conn_id.is_error()) {
@@ -431,7 +357,7 @@ void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
                 available_slots--;
             }
         }
-        peer_it++;
+        ++peer_it;
     }
 }
 
@@ -439,7 +365,7 @@ u64 Engine::get_available_peers_count(NonnullRefPtr<Torrent> torrent) const
 {
     u64 count = 0;
     for (auto const& peer : torrent->peers) {
-        if (peer->status == PeerStatus::Available)
+        if (peer.value->status == PeerStatus::Available)
             count++;
     }
     return count;
@@ -511,7 +437,9 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
                     m_comm.close_connection(connected_peer->connection_id, "Torrent fully downloaded.");
             }
 
-            m_torrents.get(torrent->info_hash).value()->state = TorrentState::SEEDING;
+            m_announcers.get(torrent->info_hash).value()->completed();
+
+            torrent->state = TorrentState::SEEDING;
             return {};
         }
     } else {
@@ -633,6 +561,7 @@ ErrorOr<void> Engine::parse_input_message(ConnectionId connection_id, ReadonlyBy
         TRY(handle_piece(make<PieceMessage>(stream), peer));
         break;
     case MessageType::Cancel:
+        // TODO implement this.
         dbgln("ERROR: message type Cancel is unsupported");
         break;
     default:
@@ -735,7 +664,7 @@ ErrorOr<void> Engine::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, No
     piece.data.overwrite(begin, piece_message->block.bytes().data(), block_size);
     piece.offset = begin + block_size;
     if (piece.offset == (size_t)piece.length) {
-        deferred_invoke([this, index, peer, bytes = piece.data.bytes()] {
+        m_event_loop->deferred_invoke([this, index, peer, bytes = piece.data.bytes()] {
             MUST(piece_downloaded(index, bytes, peer)); // TODO run disk IO related stuff like that in a separate thread for potential performance gains
         });
         piece.index = {};

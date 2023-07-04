@@ -48,8 +48,9 @@ void Comm::close_connection(Bits::ConnectionId connection_id, DeprecatedString r
 {
     m_event_loop->deferred_invoke([&] {
         auto connection = m_connections.get(connection_id);
-        VERIFY(connection.has_value());
-        close_connection_internal(*connection.release_value(), reason);
+        if (connection.has_value())
+            close_connection_internal(*connection.release_value(), reason);
+        // else connection not found here because it was already closed by the remote host. The engine event loop didn't invoke the related callback yet and called close_connection thinking it was still open.
     });
 }
 

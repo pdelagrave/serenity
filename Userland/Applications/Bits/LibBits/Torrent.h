@@ -40,6 +40,7 @@ struct Torrent : public RefCounted<Torrent> {
     const DeprecatedString data_path;
     const InfoHash info_hash;
     const PeerId local_peer_id;
+    const u64 tracker_session_key; // https://www.bittorrent.org/beps/bep_0007.html
     const u64 piece_count;
     const u64 nominal_piece_length; // Is "nominal" used correctly here?
     const u64 total_length;
@@ -53,7 +54,7 @@ struct Torrent : public RefCounted<Torrent> {
     // Active torrent members
     PieceHeap piece_heap;
     HashMap<u64, RefPtr<PieceStatus>> missing_pieces;
-    Vector<NonnullRefPtr<Peer>> peers;
+    HashMap<Core::SocketAddress, NonnullRefPtr<Peer>> peers;
     HashTable<NonnullRefPtr<PeerContext>> connected_peers;
     u64 download_speed { 0 };
     u64 upload_speed { 0 };
