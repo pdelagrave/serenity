@@ -29,6 +29,8 @@ struct Peer : public RefCounted<Peer> {
 
     // FIXME ugly hack, should not be used to temporarily save the id before creating the peercontext.
     Optional<PeerId> id_from_handshake;
+
+    static DeprecatedString status_string(PeerStatus);
 };
 
 }

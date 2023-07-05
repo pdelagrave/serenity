@@ -46,7 +46,7 @@ Comm::Comm()
 
 void Comm::close_connection(Bits::ConnectionId connection_id, DeprecatedString reason)
 {
-    m_event_loop->deferred_invoke([&] {
+    m_event_loop->deferred_invoke([&, connection_id, reason] {
         auto connection = m_connections.get(connection_id);
         if (connection.has_value())
             close_connection_internal(*connection.release_value(), reason);

@@ -64,7 +64,7 @@ private:
 
     void connect_more_peers(NonnullRefPtr<Torrent>);
     u64 get_available_peers_count(NonnullRefPtr<Torrent> torrent) const;
-    void peer_disconnected(ConnectionId connection_id);
+    void peer_disconnected(ConnectionId connection_id, DeprecatedString reason);
 
     ErrorOr<void> piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerContext> peer);
     ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<Torrent> torrent);

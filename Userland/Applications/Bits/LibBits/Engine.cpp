@@ -94,6 +94,7 @@ void Engine::start_torrent(InfoHash info_hash)
     m_event_loop->deferred_invoke([this, info_hash]() {
         NonnullRefPtr<Torrent> torrent = *m_torrents.get(info_hash).value();
 
+        // FIXME better handling of (non)-existing files at torrent startup
         for (auto local_file : torrent->local_files) {
             auto err = create_file_with_subdirs(local_file->local_path());
             if (err.is_error()) {
@@ -131,6 +132,7 @@ void Engine::start_torrent(InfoHash info_hash)
                 torrent->state = TorrentState::SEEDING;
             }
 
+            // The HTTP request we make to the tracker requires these stats.
             auto get_stats_for_announce = [torrent]() -> AnnounceStats {
                 return { 0, 0, torrent->local_bitfield.zeroes() * torrent->nominal_piece_length };
             };
@@ -233,7 +235,7 @@ Engine::Engine(bool skip_checking, bool assume_valid)
     m_comm.on_peer_disconnect = [&](ConnectionId connection_id, DeprecatedString reason) {
         m_event_loop->deferred_invoke([&, connection_id, reason] {
             dbgln("Disconnected: {}", reason);
-            peer_disconnected(connection_id);
+            peer_disconnected(connection_id, reason);
         });
     };
 
@@ -252,6 +254,12 @@ Engine::Engine(bool skip_checking, bool assume_valid)
             VERIFY(maybe_peer.has_value());
 
             auto peer = maybe_peer.release_value();
+            if (peer->torrent->state != TorrentState::STARTED) {
+                // FIXME: the peer status will end up errored even if it should be available to be reusable.
+                m_comm.close_connection(connection_id, "Connection established after torrent stopped");
+                return;
+            }
+
             auto pcontext = make_ref_counted<PeerContext>(peer, connection_id, peer->id_from_handshake.value());
             m_connected_peers.set(connection_id, pcontext);
             peer->torrent->connected_peers.set(pcontext);
@@ -332,6 +340,7 @@ void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
     auto peer_it = torrent->peers.begin();
     while (available_slots > 0 && peer_it != torrent->peers.end()) {
         auto& peer = peer_it->value;
+        dbgln("Peer {} status: {}", peer->address, Peer::status_string(peer->status));
         if (peer->status == PeerStatus::Available) {
             auto maybe_conn_id = m_comm.connect(peer->address, HandshakeMessage(torrent->info_hash, torrent->local_peer_id));
             if (maybe_conn_id.is_error()) {
@@ -358,7 +367,7 @@ u64 Engine::get_available_peers_count(NonnullRefPtr<Torrent> torrent) const
     return count;
 }
 
-void Engine::peer_disconnected(ConnectionId connection_id)
+void Engine::peer_disconnected(ConnectionId connection_id, DeprecatedString reason)
 {
     RefPtr<Peer> peer;
     if (m_connecting_peers.contains(connection_id)) {
@@ -381,10 +390,13 @@ void Engine::peer_disconnected(ConnectionId connection_id)
         torrent->connected_peers.remove(peer_context);
     }
 
-    peer->status = PeerStatus::Errored;
+    // FIXME: use an enum
+    if (reason == "Stopping torrent")
+        peer->status = PeerStatus::Available;
+    else
+        peer->status = PeerStatus::Errored;
 
-    // FIXME: add another condition to check if the torrent status is still downloading
-    if (peer->torrent->local_bitfield.progress() < 100)
+    if (peer->torrent->local_bitfield.progress() < 100 && peer->torrent->state == TorrentState::STARTED)
         connect_more_peers(peer->torrent);
 }
 
@@ -505,6 +517,7 @@ ErrorOr<void> Engine::peer_has_piece(u64 piece_index, NonnullRefPtr<PeerContext>
 
 void Engine::insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_index)
 {
+    dbgln("Reinserting piece {} in the heap for torrent {}", piece_index, torrent->info_hash);
     auto piece_status = torrent->missing_pieces.get(piece_index).value();
     piece_status->currently_downloading = false;
     torrent->piece_heap.insert(*piece_status);
@@ -513,6 +526,10 @@ void Engine::insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_inde
 ErrorOr<void> Engine::parse_input_message(ConnectionId connection_id, ReadonlyBytes message_bytes)
 {
     NonnullRefPtr<PeerContext> peer = *m_connected_peers.get(connection_id).value();
+    if (peer->peer->torrent->state != TorrentState::STARTED) {
+        dbgln("Discarding message from peer {} because torrent is not started anymore", peer->peer->address);
+        return {};
+    }
     auto stream = FixedMemoryStream(message_bytes);
 
     using MessageType = Bits::Message::Type;
@@ -651,11 +668,9 @@ ErrorOr<void> Engine::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, No
     piece.data.overwrite(begin, piece_message->block.bytes().data(), block_size);
     piece.offset = begin + block_size;
     if (piece.offset == (size_t)piece.length) {
-        m_event_loop->deferred_invoke([this, index, peer, bytes = piece.data.bytes()] {
-            MUST(piece_downloaded(index, bytes, peer)); // TODO run disk IO related stuff like that in a separate thread for potential performance gains
-        });
         piece.index = {};
         peer->active = false;
+        TRY(piece_downloaded(index, piece.data.bytes(), peer));
     } else {
         if (peer->peer_is_choking_us) {
             dbgln("Weren't done downloading the blocks for this piece {}, but peer is choking us, so we're giving up on it", index);
