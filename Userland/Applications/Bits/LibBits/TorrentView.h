@@ -34,6 +34,7 @@ struct TorrentView {
     u64 size;
     TorrentState state;
     float progress;
+    float check_progress;
     u64 download_speed;
     u64 upload_speed;
     DeprecatedString save_path;

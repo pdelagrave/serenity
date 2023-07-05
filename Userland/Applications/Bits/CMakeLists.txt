@@ -12,7 +12,9 @@ set(SOURCES
         LibBits/Announcer.cpp
         LibBits/BitField.cpp
         LibBits/BitTorrentMessage.cpp
+        LibBits/Checker.cpp
         LibBits/Engine.cpp
+        LibBits/Files.cpp
         LibBits/MetaInfo.cpp
         LibBits/PeerContext.cpp
         LibBits/Peer.cpp

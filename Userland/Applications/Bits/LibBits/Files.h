@@ -6,9 +6,11 @@
 
 #pragma once
 
-#include "AK/DeprecatedString.h"
+#include <AK/DeprecatedString.h>
 
 namespace Bits {
+
+ErrorOr<void> create_file_with_subdirs(const AK::DeprecatedString& absolute_path);
 
 class File : public RefCounted<File> {
 public:

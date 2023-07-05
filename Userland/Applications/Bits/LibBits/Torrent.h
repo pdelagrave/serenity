@@ -15,7 +15,6 @@
 #include <AK/NonnullRefPtr.h>
 #include <AK/RefCounted.h>
 #include <AK/URL.h>
-#include <LibThreading/BackgroundAction.h>
 
 namespace Bits {
 
@@ -25,6 +24,8 @@ struct Peer;
 enum class TorrentState {
     ERROR,
     CHECKING,
+    CHECKING_CANCELLED,
+    CHECKING_FAILED,
     STOPPED,
     STARTED,
     SEEDING
@@ -33,10 +34,11 @@ enum class TorrentState {
 ErrorOr<String> state_to_string(TorrentState state);
 
 struct Torrent : public RefCounted<Torrent> {
-    Torrent(DeprecatedString display_name, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>>, DeprecatedString data_path, InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port, NonnullOwnPtr<TorrentDataFileMap> data_file_map);
+    Torrent(DeprecatedString display_name, Vector<NonnullRefPtr<LocalFile>>, ByteBuffer piece_hashes, DeprecatedString data_path, InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port);
 
     const DeprecatedString display_name;
-    NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> const local_files;
+    Vector<NonnullRefPtr<LocalFile>> const local_files;
+    const ByteBuffer piece_hashes;
     const DeprecatedString data_path;
     const InfoHash info_hash;
     const PeerId local_peer_id;
@@ -46,7 +48,8 @@ struct Torrent : public RefCounted<Torrent> {
     const u64 total_length;
     const u16 local_port;
     BitField local_bitfield;
-    NonnullOwnPtr<TorrentDataFileMap> const data_file_map;
+    bool bitfield_is_up_to_date = false;
+    NonnullOwnPtr<TorrentDataFileMap> data_file_map;
 
     URL announce_url;
     TorrentState state = TorrentState::STOPPED;
@@ -58,12 +61,6 @@ struct Torrent : public RefCounted<Torrent> {
     HashTable<NonnullRefPtr<PeerContext>> connected_peers;
     u64 download_speed { 0 };
     u64 upload_speed { 0 };
-
-    // Checking members
-    RefPtr<Threading::BackgroundAction<int>> background_checker;
-    u64 piece_verified = 0;
-    void checking_in_background(bool skip, bool assume_valid, Function<void(BitField)> on_complete);
-    void cancel_checking();
 
     u64 piece_length(u64 piece_index) const;
 };

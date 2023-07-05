@@ -7,6 +7,7 @@
 #pragma once
 
 #include "Announcer.h"
+#include "Checker.h"
 #include "FixedSizeByteString.h"
 #include "MetaInfo.h"
 #include "Net/Comm.h"
@@ -31,16 +32,18 @@ public:
     void register_views_update_callback(int interval_ms, Function<void(NonnullOwnPtr<HashMap<InfoHash, TorrentView>>)> callback);
 
 private:
+    Engine(bool skip_checking, bool assume_valid);
+
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
 
-    Engine(bool skip_checking, bool assume_valid);
     NonnullOwnPtr<HashMap<InfoHash, TorrentView>> torrents_views();
-    static ErrorOr<void> create_file(DeprecatedString const& path);
+    void check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_success);
 
     HashMap<InfoHash, NonnullRefPtr<Announcer>> m_announcers;
     HashMap<InfoHash, NonnullRefPtr<Torrent>> m_torrents;
 
+    Checker m_checker;
     Comm m_comm;
     bool m_skip_checking;
     bool m_assume_valid;
@@ -57,6 +60,7 @@ private:
     HashMap<ConnectionId, NonnullRefPtr<Peer>> m_connecting_peers;
     HashMap<ConnectionId, NonnullRefPtr<PeerContext>> m_connected_peers;
     NonnullOwnPtr<HashMap<ConnectionId, ConnectionStats>> m_connection_stats { make<HashMap<ConnectionId, ConnectionStats>>() };
+    CheckerStats m_checker_stats;
 
     void connect_more_peers(NonnullRefPtr<Torrent>);
     u64 get_available_peers_count(NonnullRefPtr<Torrent> torrent) const;

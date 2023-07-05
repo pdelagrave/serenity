@@ -5,22 +5,23 @@
  */
 
 #include "TorrentDataFileMap.h"
+#include <LibCrypto/Hash/HashManager.h>
 
 namespace Bits {
 
-NonnullOwnPtr<MultiFileMapperStream> MultiFileMapperStream::create(NonnullOwnPtr<Vector<NonnullRefPtr<Bits::LocalFile>>> files)
+NonnullOwnPtr<MultiFileMapperStream> MultiFileMapperStream::create(Vector<NonnullRefPtr<Bits::LocalFile>> files)
 {
     size_t i = 0;
     u64 total_length = 0;
-    auto files_positions = make<Vector<NonnullRefPtr<MappedFilePosition>>>();
-    for (auto file : *files) {
+    auto files_positions = Vector<NonnullRefPtr<MappedFilePosition>>();
+    for (auto file : files) {
         total_length += file->meta_info_file()->length();
 
         auto optional_fs_file = Optional<NonnullOwnPtr<SeekableStream>>();
         optional_fs_file.lazy_emplace([&file] { return Core::InputBufferedFile::create(Core::File::open(file->local_path(), Core::File::OpenMode::ReadWrite).release_value()).release_value(); });
         auto mapped_file_position = make_ref_counted<MappedFilePosition>(i, total_length, move(optional_fs_file));
 
-        files_positions->append(move(mapped_file_position));
+        files_positions.append(move(mapped_file_position));
     }
     return adopt_nonnull_own_or_enomem(new (nothrow) MultiFileMapperStream(move(files_positions), total_length)).release_value_but_fixme_should_propagate_errors();
 }
@@ -36,10 +37,10 @@ ErrorOr<void> MultiFileMapperStream::read_until_filled(Bytes buffer)
 
     while (nread < buffer.size()) {
         if (current_fs_file().is_eof()) {
-            if (m_current_file->file_index == m_files_positions->size() - 1)
+            if (m_current_file->file_index == m_files_positions.size() - 1)
                 return Error::from_string_view_or_print_error_and_return_errno("Reached end-of-file before filling the entire buffer"sv, EIO);
 
-            m_current_file = m_files_positions->at(m_current_file->file_index + 1);
+            m_current_file = m_files_positions.at(m_current_file->file_index + 1);
             TRY(current_fs_file().seek(0, SeekMode::SetPosition));
         }
 
@@ -66,16 +67,15 @@ ErrorOr<size_t> MultiFileMapperStream::seek(i64 offset, SeekMode mode)
     if ((u64)offset == m_current_offset)
         return offset;
 
-
     auto* mapped_file_position = m_files_positions_by_offset.find_smallest_not_below(offset);
     if (!mapped_file_position)
         return Error::from_string_literal("Invalid offset");
 
     m_current_file = *mapped_file_position;
-    u64 prev_relative_zero_offset = m_current_file->file_index == 0 ? 0 : m_files_positions->at(m_current_file->file_index - 1)->relative_zero_offset;
-    //dbgln("m_current_file->file_index: {}, prev_relative_zero_offset: {}", m_current_file->file_index, prev_relative_zero_offset);
+    u64 prev_relative_zero_offset = m_current_file->file_index == 0 ? 0 : m_files_positions.at(m_current_file->file_index - 1)->relative_zero_offset;
+    // dbgln("m_current_file->file_index: {}, prev_relative_zero_offset: {}", m_current_file->file_index, prev_relative_zero_offset);
     TRY(m_current_file->fs_file.value()->seek(offset - prev_relative_zero_offset, SeekMode::SetPosition));
-    m_current_offset = (u64) offset;
+    m_current_offset = (u64)offset;
 
     return offset;
 }
@@ -100,10 +100,7 @@ ErrorOr<Bytes> MultiFileMapperStream::read_some(Bytes bytes)
 {
     return current_fs_file().read_some(bytes);
 }
-ErrorOr<ByteBuffer> MultiFileMapperStream::read_until_eof(size_t)
-{
-    VERIFY_NOT_REACHED();
-}
+
 ErrorOr<size_t> MultiFileMapperStream::write_some(ReadonlyBytes bytes)
 {
     return current_fs_file().write_some(bytes);
@@ -116,10 +113,10 @@ ErrorOr<void> MultiFileMapperStream::write_until_depleted(ReadonlyBytes buffer)
     while (nwritten < buffer.size()) {
         if (current_fs_file().is_eof()) {
             dbgln("Writing to file but the current one is eof {}, moving to {}", m_current_file->file_index, m_current_file->file_index + 1);
-            if (m_current_file->file_index == m_files_positions->size() - 1)
+            if (m_current_file->file_index == m_files_positions.size() - 1)
                 return Error::from_string_view_or_print_error_and_return_errno("Reached end-of-file before filling the entire buffer"sv, EIO);
 
-            m_current_file = m_files_positions->at(m_current_file->file_index + 1);
+            m_current_file = m_files_positions.at(m_current_file->file_index + 1);
             TRY(current_fs_file().seek(0, SeekMode::SetPosition));
         }
 
@@ -148,13 +145,13 @@ bool MultiFileMapperStream::is_open() const
 }
 void MultiFileMapperStream::close()
 {
-    for (auto fp : *m_files_positions) {
+    for (auto fp : m_files_positions) {
         if (fp->fs_file.has_value())
             fp->fs_file.value()->close();
     }
 }
 
-TorrentDataFileMap::TorrentDataFileMap(ByteBuffer piece_hashes, i64 piece_length, NonnullOwnPtr<Vector<NonnullRefPtr<LocalFile>>> files)
+TorrentDataFileMap::TorrentDataFileMap(ByteBuffer piece_hashes, i64 piece_length, Vector<NonnullRefPtr<LocalFile>> files)
     : m_piece_hashes(piece_hashes)
     , m_piece_length(piece_length)
     , m_files_mapper(MultiFileMapperStream::create(move(files)))
@@ -190,8 +187,9 @@ ErrorOr<bool> TorrentDataFileMap::check_piece(i64 index, bool is_last_piece)
 ErrorOr<bool> TorrentDataFileMap::validate_hash(i64 index, AK::ReadonlyBytes data)
 {
     auto piece_hash = TRY(m_piece_hashes.slice(index * 20, 20));
-    m_sha1.update(data); // not thread safe, this will cause problem.
-    return m_sha1.digest().bytes() == piece_hash.bytes();
+    auto sha1 = Crypto::Hash::Manager(Crypto::Hash::HashKind::SHA1);
+    sha1.update(data);
+    return sha1.digest().bytes() == piece_hash.bytes();
 }
 
 }

@@ -5,40 +5,41 @@
  */
 
 #include "Engine.h"
-#include <AK/LexicalPath.h>
-#include <LibFileSystem/FileSystem.h>
 
 namespace Bits {
 
 void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString data_path)
 {
-    auto torrent_root_dir = meta_info->root_dir_name();
-    DeprecatedString optional_root_dir = "";
-    if (torrent_root_dir.has_value()) {
-        optional_root_dir = DeprecatedString::formatted("/{}", torrent_root_dir.value());
-    }
+    m_event_loop->deferred_invoke([&, meta_info = move(meta_info), data_path] {
+        auto torrent_root_dir = meta_info->root_dir_name();
+        DeprecatedString optional_root_dir = "";
+        if (torrent_root_dir.has_value()) {
+            optional_root_dir = DeprecatedString::formatted("/{}", torrent_root_dir.value());
+        }
 
-    auto root_data_path = DeprecatedString::formatted("{}{}", data_path, optional_root_dir);
-    auto local_files = make<Vector<NonnullRefPtr<LocalFile>>>();
-    for (auto f : meta_info->files()) {
-        auto local_path = DeprecatedString::formatted("{}/{}", root_data_path, f->path());
-        local_files->append(make_ref_counted<LocalFile>(move(local_path), move(f)));
-    }
+        auto root_data_path = DeprecatedString::formatted("{}{}", data_path, optional_root_dir);
+        auto local_files = Vector<NonnullRefPtr<LocalFile>>();
+        for (auto f : meta_info->files()) {
+            auto local_path = DeprecatedString::formatted("{}/{}", root_data_path, f->path());
+            local_files.append(make_ref_counted<LocalFile>(move(local_path), move(f)));
+        }
 
-    auto info_hash = InfoHash({ meta_info->info_hash() });
-    NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(
-        meta_info->root_dir_name().value_or(meta_info->files()[0]->path()),
-        move(local_files),
-        root_data_path,
-        info_hash,
-        PeerId::random(),
-        meta_info->total_length(),
-        meta_info->piece_length(),
-        27007,
-        make<TorrentDataFileMap>(meta_info->piece_hashes(), meta_info->piece_length(), make<Vector<NonnullRefPtr<LocalFile>>>(*local_files)));
-    torrent->announce_url = meta_info->announce();
+        auto info_hash = InfoHash({ meta_info->info_hash() });
+        NonnullRefPtr<Torrent> const& torrent = make_ref_counted<Torrent>(
+            meta_info->root_dir_name().value_or(meta_info->files()[0]->path()),
+            move(local_files),
+            meta_info->piece_hashes(),
+            root_data_path,
+            info_hash,
+            PeerId::random(),
+            meta_info->total_length(),
+            meta_info->piece_length(),
+            27007
+            );
+        torrent->announce_url = meta_info->announce();
 
-    m_torrents.set(info_hash, move(torrent));
+        m_torrents.set(info_hash, move(torrent));
+    });
 }
 
 NonnullOwnPtr<HashMap<InfoHash, TorrentView>> Engine::torrents_views()
@@ -70,83 +71,31 @@ NonnullOwnPtr<HashMap<InfoHash, TorrentView>> Engine::torrents_views()
             torrent->upload_speed += stats.upload_speed;
         }
 
-        views->set(info_hash, TorrentView(info_hash, torrent->display_name, torrent->total_length, torrent->state, torrent->local_bitfield.progress(), torrent->download_speed, torrent->upload_speed, torrent->data_path, pviews, torrent->local_bitfield));
+        views->set(info_hash, TorrentView(
+                                  info_hash,
+                                  torrent->display_name,
+                                  torrent->total_length,
+                                  torrent->state,
+                                  torrent->local_bitfield.progress(),
+                                  m_checker_stats.get(info_hash).value_or(0),
+                                  torrent->download_speed,
+                                  torrent->upload_speed,
+                                  torrent->data_path,
+                                  pviews,
+                                  torrent->local_bitfield
+                                  ));
     }
 
     return views;
-}
-
-ErrorOr<void> Engine::create_file(const AK::DeprecatedString& absolute_path)
-{
-    // Most of this code is copied from Userland/Utilities/mkdir/mkdir.cpp
-    mode_t const default_mode = 0755;
-
-    LexicalPath lexical_path(absolute_path);
-    auto& parts = lexical_path.parts_view();
-    size_t num_parts = parts.size();
-
-    StringBuilder path_builder;
-    path_builder.append('/');
-
-    for (size_t idx = 0; idx < num_parts; ++idx) {
-        bool const is_final = (idx == (num_parts - 1));
-        path_builder.append(parts[idx]);
-        auto const path = path_builder.to_deprecated_string();
-
-        struct stat st;
-        if (stat(path.characters(), &st) < 0) {
-            if (errno != ENOENT) {
-                perror("stat");
-                warnln("Error other than 'no such file or directory' with: {}", path);
-                return Error::from_string_literal("Error creating directory");
-            }
-
-            if (is_final) {
-                dbgln("creating file '{}'", path);
-                int fd = creat(path.characters(), default_mode);
-                if (fd < 0) {
-                    perror("creat");
-                    warnln("Error creating file '{}'", path);
-                    return Error::from_string_literal("Cannot create file");
-                }
-                close(fd);
-                return {};
-            }
-
-            dbgln("creating directory '{}'", path);
-            if (mkdir(path.characters(), default_mode) < 0) {
-                perror("mkdir");
-                warnln("Error creating directory '{}'", path);
-                return Error::from_string_literal("Cannot create directory");
-            }
-        } else {
-            if (is_final) {
-                if (!S_ISREG(st.st_mode)) {
-                    warnln("Error: file already exists but isn't a regular file: '{}'", path);
-                    return Error::from_string_literal("File alrady exists but isn't a regular file");
-                } else {
-                    dbgln("file '{}' already exists", path);
-                }
-            } else if (!S_ISDIR(st.st_mode)) {
-                warnln("Cannot create directory, a non-directory file already exists for path '{}'", path);
-                return Error::from_string_literal("Cannot create directory");
-            } else {
-                dbgln("directory '{}' already exists", path);
-            }
-        }
-        path_builder.append('/');
-    }
-    return {};
 }
 
 void Engine::start_torrent(InfoHash info_hash)
 {
     m_event_loop->deferred_invoke([this, info_hash]() {
         NonnullRefPtr<Torrent> torrent = *m_torrents.get(info_hash).value();
-        torrent->state = TorrentState::CHECKING;
 
-        for (auto local_file : *torrent->local_files) {
-            auto err = create_file(local_file->local_path());
+        for (auto local_file : torrent->local_files) {
+            auto err = create_file_with_subdirs(local_file->local_path());
             if (err.is_error()) {
                 dbgln("error creating file: {}", err.error());
                 torrent->state = TorrentState::ERROR;
@@ -160,6 +109,8 @@ void Engine::start_torrent(InfoHash info_hash)
             }
             auto f = fe.release_value();
 
+
+            // FIXME: Fallocating or truncating is very slow on ext2, we should give better feedback to the user.
             auto x = Core::System::posix_fallocate(f->fd(), 0, local_file->meta_info_file()->length());
             if (x.is_error()) {
                 dbgln("error posix_fallocating file: {}", x.error());
@@ -169,42 +120,72 @@ void Engine::start_torrent(InfoHash info_hash)
             f->close();
         }
 
-        torrent->checking_in_background(m_skip_checking, m_assume_valid, [this, torrent, info_hash](BitField local_bitfield) {
-            // Checking finished callback, still on the background thread
-            torrent->state = TorrentState::STARTED;
-            // announcing using the UI thread/loop:
-            m_event_loop->deferred_invoke([this, torrent, info_hash, local_bitfield = move(local_bitfield)] {
-                dbgln("we have {}/{} pieces", local_bitfield.ones(), torrent->piece_count);
-
+        auto do_start_torrent = [this, torrent] {
+            if (torrent->local_bitfield.progress() < 100) {
                 for (u64 i = 0; i < torrent->piece_count; i++) {
                     if (!torrent->local_bitfield.get(i))
                         torrent->missing_pieces.set(i, make_ref_counted<PieceStatus>(i));
                 }
+                torrent->state = TorrentState::STARTED;
+            } else {
+                torrent->state = TorrentState::SEEDING;
+            }
 
-                auto get_stats_for_announce = [torrent]() -> AnnounceStats {
-                    return { 0, 0, torrent->local_bitfield.zeroes() * torrent->nominal_piece_length };
-                };
+            auto get_stats_for_announce = [torrent]() -> AnnounceStats {
+                return { 0, 0, torrent->local_bitfield.zeroes() * torrent->nominal_piece_length };
+            };
 
-                auto on_announce_success = [this, torrent, info_hash](Vector<Core::SocketAddress> peers) {
-                    if (torrent->state == TorrentState::STARTED) {
-                        for (auto const& peer_address : peers) {
-                            if (!torrent->peers.contains(peer_address))
-                                torrent->peers.set(peer_address, make_ref_counted<Peer>(peer_address, torrent));
-                        }
-                        connect_more_peers(torrent);
+            auto on_announce_success = [this, torrent](Vector<Core::SocketAddress> peers) {
+                if (torrent->state == TorrentState::STARTED) {
+                    for (auto const& peer_address : peers) {
+                        if (!torrent->peers.contains(peer_address))
+                            torrent->peers.set(peer_address, make_ref_counted<Peer>(peer_address, torrent));
                     }
-                };
+                    connect_more_peers(torrent);
+                }
+            };
+            auto info_hash = torrent->info_hash;
+            m_announcers.set(info_hash, MUST(Announcer::create(info_hash, torrent->announce_url, torrent->local_peer_id, torrent->local_port, torrent->tracker_session_key, move(get_stats_for_announce), move(on_announce_success))));
+        };
 
-                m_announcers.set(info_hash, MUST(Announcer::create(info_hash, torrent->announce_url, torrent->local_peer_id, torrent->local_port, torrent->tracker_session_key, move(get_stats_for_announce), move(on_announce_success))));
-            });
+        if (torrent->bitfield_is_up_to_date) {
+            do_start_torrent();
+        } else {
+            check_torrent(torrent, move(do_start_torrent));
+        }
+    });
+}
+
+void Engine::check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_success)
+{
+    torrent->state = TorrentState::CHECKING;
+    auto data_file_map = make<TorrentDataFileMap>(torrent->piece_hashes, torrent->nominal_piece_length, torrent->local_files);
+    m_checker.check(torrent->info_hash, move(data_file_map), torrent->piece_count, [&, torrent, on_success = move(on_success)](ErrorOr<BitField> checked_bitfield) mutable {
+        m_event_loop->deferred_invoke([&, torrent, checked_bitfield = move(checked_bitfield), on_success = move(on_success)] () mutable {
+            if (checked_bitfield.is_error()) {
+                auto& err = checked_bitfield.error();
+                if (err.code() == ECANCELED) {
+                    dbgln("Torrent check cancelled");
+                    torrent->state = TorrentState::CHECKING_CANCELLED;
+                } else {
+                    dbgln("Error checking torrent: {}", err);
+                    torrent->state = TorrentState::CHECKING_FAILED;
+                }
+            } else {
+                dbgln("Torrent check succeeded");
+                torrent->local_bitfield = checked_bitfield.release_value();
+                torrent->bitfield_is_up_to_date = true;
+                on_success();
+            }
         });
     });
+
+    dbgln("We have {}/{} pieces", torrent->local_bitfield.ones(), torrent->piece_count);
 }
 
 void Engine::stop_torrent(InfoHash info_hash)
 {
     m_event_loop->deferred_invoke([&, info_hash] {
-        // Notify the tracker that we're stopping then stop announcing
         m_announcers.take(info_hash).value()->stopped();
 
         auto torrent = m_torrents.get(info_hash).value();
@@ -217,9 +198,9 @@ void Engine::stop_torrent(InfoHash info_hash)
 
 void Engine::cancel_checking(InfoHash info_hash)
 {
-    auto torrent = m_torrents.get(info_hash).value();
-    torrent->cancel_checking();
-    torrent->state = TorrentState::STOPPED;
+    m_event_loop->deferred_invoke([&, info_hash] {
+        m_checker.cancel(info_hash);
+    });
 }
 
 void Engine::register_views_update_callback(int interval_ms, Function<void(NonnullOwnPtr<HashMap<InfoHash, TorrentView>>)> views_updated)
@@ -242,6 +223,12 @@ Engine::Engine(bool skip_checking, bool assume_valid)
         "Engine"sv);
 
     m_thread->start();
+
+    m_checker.on_stats_update = [&] (CheckerStats stats) {
+        m_event_loop->deferred_invoke([&, stats = move(stats)] {
+            m_checker_stats = stats;
+        });
+    };
 
     m_comm.on_peer_disconnect = [&](ConnectionId connection_id, DeprecatedString reason) {
         m_event_loop->deferred_invoke([&, connection_id, reason] {

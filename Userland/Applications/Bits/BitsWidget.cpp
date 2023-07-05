@@ -58,7 +58,7 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
         case Column::State:
             return state_to_string(torrent.state).release_value_but_fixme_should_propagate_errors();
         case Column::Progress:
-            return DeprecatedString::formatted("{:.1}%", torrent.progress);
+            return DeprecatedString::formatted("{:.1}%", torrent.state == Bits::TorrentState::CHECKING ? torrent.check_progress : torrent.progress);
         case Column::DownloadSpeed:
             return DeprecatedString::formatted("{}/s", human_readable_size(torrent.download_speed));
         case Column::UploadSpeed:
@@ -121,7 +121,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
             .window_title = "Open a torrent file"sv,
             .path = Core::StandardPaths::home_directory(),
             .requested_access = Core::File::OpenMode::Read,
-            .allowed_file_types = { { GUI::FileTypeFilter { "Torrent Files", { { ".torrent" } } }, GUI::FileTypeFilter::all_files() } }
+            .allowed_file_types = { { GUI::FileTypeFilter { "Torrent Files", { { "torrent" } } }, GUI::FileTypeFilter::all_files() } }
         };
         auto maybe_file = FileSystemAccessClient::Client::the().open_file(window, options);
         if (maybe_file.is_error()) {
@@ -213,7 +213,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
             for (auto const& torrent : *torrents) {
                 progress += torrent.value.progress;
             }
-            widget->window()->set_progress(progress / torrents->size());
+            widget->window()->set_progress(torrents->size() > 0 ? progress / torrents->size() : 0);
             widget->m_torrent_model->update(move(torrents));
             update_general_tab_widget();
             update_peer_tab_widget();
