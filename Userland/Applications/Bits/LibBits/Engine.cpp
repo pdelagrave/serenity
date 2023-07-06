@@ -192,6 +192,7 @@ void Engine::stop_torrent(InfoHash info_hash)
 
         auto torrent = m_torrents.get(info_hash).value();
         torrent->state = TorrentState::STOPPED;
+        torrent->piece_heap.clear();
         for (auto& pcontext : m_torrents.get(info_hash).value()->connected_peers) {
             m_comm.close_connection(pcontext->connection_id, "Stopping torrent");
         }
@@ -382,7 +383,7 @@ void Engine::peer_disconnected(ConnectionId connection_id, DeprecatedString reas
         }
 
         auto& piece = peer_context->incoming_piece;
-        if (piece.index.has_value()) {
+        if (piece.index.has_value() && torrent->state == TorrentState::STARTED) {
             insert_piece_in_heap(torrent, piece.index.value());
             piece.index = {};
         }
