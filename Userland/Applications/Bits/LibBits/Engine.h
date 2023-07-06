@@ -24,46 +24,42 @@ class Engine : public Core::Object {
     C_OBJECT(Engine);
 
 public:
+    u64 const max_total_connections = 100;
+    u64 const max_connections_per_torrent = 10;
+    // An upload slot is when a peer is connected to us, they are intested in us, we aren't interested in them.
+    u64 const max_total_upload_slots = 50;
+    u64 const max_upload_slots_per_torrent = 5;
+
     void add_torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
     void start_torrent(InfoHash info_hash);
     void stop_torrent(InfoHash);
     void cancel_checking(InfoHash);
-
     void register_views_update_callback(int interval_ms, Function<void(NonnullOwnPtr<HashMap<InfoHash, TorrentView>>)> callback);
 
 private:
     Engine();
 
+    u64 const BLOCK_LENGTH = 16 * KiB;
+
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
-
-    NonnullOwnPtr<HashMap<InfoHash, TorrentView>> torrents_views();
-    void check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_success);
-
-    HashMap<InfoHash, NonnullRefPtr<Announcer>> m_announcers;
-    HashMap<InfoHash, NonnullRefPtr<Torrent>> m_torrents;
 
     Checker m_checker;
     Comm m_comm;
 
-    // #######################################################################################################
-    const u64 max_total_connections = 100;
-    const u64 max_connections_per_torrent = 10;
-    // An upload slot is when a peer is connected to us, they are intested in us, we aren't interested in them.
-    const u64 max_total_upload_slots = 50;
-    const u64 max_upload_slots_per_torrent = 5;
-
-    const u64 BlockLength = 16 * KiB;
+    HashMap<InfoHash, NonnullRefPtr<Announcer>> m_announcers;
+    HashMap<InfoHash, NonnullRefPtr<Torrent>> m_torrents;
 
     HashMap<ConnectionId, NonnullRefPtr<Peer>> m_connecting_peers;
     HashMap<ConnectionId, NonnullRefPtr<PeerContext>> m_connected_peers;
+
     NonnullOwnPtr<HashMap<ConnectionId, ConnectionStats>> m_connection_stats { make<HashMap<ConnectionId, ConnectionStats>>() };
     CheckerStats m_checker_stats;
 
-    void connect_more_peers(NonnullRefPtr<Torrent>);
-    u64 get_available_peers_count(NonnullRefPtr<Torrent> torrent) const;
-    void peer_disconnected(ConnectionId connection_id, DeprecatedString reason);
+    NonnullOwnPtr<HashMap<InfoHash, TorrentView>> torrents_views();
+    void check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_success);
 
+    void connect_more_peers(NonnullRefPtr<Torrent>);
     ErrorOr<void> piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerContext> peer);
     ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<Torrent> torrent);
     ErrorOr<void> peer_has_piece(u64 piece_index, NonnullRefPtr<PeerContext> peer);

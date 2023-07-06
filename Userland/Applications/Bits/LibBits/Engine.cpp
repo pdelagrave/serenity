@@ -34,59 +34,11 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
             PeerId::random(),
             meta_info->total_length(),
             meta_info->piece_length(),
-            27007
-            );
+            27007);
         torrent->announce_url = meta_info->announce();
 
         m_torrents.set(info_hash, move(torrent));
     });
-}
-
-NonnullOwnPtr<HashMap<InfoHash, TorrentView>> Engine::torrents_views()
-{
-    auto views = make<HashMap<InfoHash, TorrentView>>();
-    for (auto const& [info_hash, torrent] : m_torrents) {
-        Vector<PeerView> pviews;
-        pviews.ensure_capacity(torrent->connected_peers.size());
-
-        torrent->download_speed = 0;
-        torrent->upload_speed = 0;
-        for (auto const& peer : torrent->connected_peers) {
-            auto const& stats = m_connection_stats->get(peer->connection_id).value_or({});
-            pviews.append(PeerView(
-                peer->id,
-                peer->peer->address.ipv4_address().to_deprecated_string(),
-                peer->peer->address.port(),
-                peer->bitfield.progress(),
-                stats.download_speed,
-                stats.upload_speed,
-                stats.bytes_downloaded,
-                stats.bytes_uploaded,
-                peer->we_are_choking_peer,
-                peer->peer_is_choking_us,
-                peer->we_are_interested_in_peer,
-                peer->peer_is_interested_in_us,
-                true));
-            torrent->download_speed += stats.download_speed;
-            torrent->upload_speed += stats.upload_speed;
-        }
-
-        views->set(info_hash, TorrentView(
-                                  info_hash,
-                                  torrent->display_name,
-                                  torrent->total_length,
-                                  torrent->state,
-                                  torrent->local_bitfield.progress(),
-                                  m_checker_stats.get(info_hash).value_or(0),
-                                  torrent->download_speed,
-                                  torrent->upload_speed,
-                                  torrent->data_path,
-                                  pviews,
-                                  torrent->local_bitfield
-                                  ));
-    }
-
-    return views;
 }
 
 void Engine::start_torrent(InfoHash info_hash)
@@ -109,7 +61,6 @@ void Engine::start_torrent(InfoHash info_hash)
                 return;
             }
             auto f = fe.release_value();
-
 
             // FIXME: Fallocating or truncating is very slow on ext2, we should give better feedback to the user.
             auto x = Core::System::posix_fallocate(f->fd(), 0, local_file->meta_info_file()->length());
@@ -158,33 +109,6 @@ void Engine::start_torrent(InfoHash info_hash)
     });
 }
 
-void Engine::check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_success)
-{
-    torrent->state = TorrentState::CHECKING;
-    auto data_file_map = make<TorrentDataFileMap>(torrent->piece_hashes, torrent->nominal_piece_length, torrent->local_files);
-    m_checker.check(torrent->info_hash, move(data_file_map), torrent->piece_count, [&, torrent, on_success = move(on_success)](ErrorOr<BitField> checked_bitfield) mutable {
-        m_event_loop->deferred_invoke([&, torrent, checked_bitfield = move(checked_bitfield), on_success = move(on_success)] () mutable {
-            if (checked_bitfield.is_error()) {
-                auto& err = checked_bitfield.error();
-                if (err.code() == ECANCELED) {
-                    dbgln("Torrent check cancelled");
-                    torrent->state = TorrentState::CHECKING_CANCELLED;
-                } else {
-                    dbgln("Error checking torrent: {}", err);
-                    torrent->state = TorrentState::CHECKING_FAILED;
-                }
-            } else {
-                dbgln("Torrent check succeeded");
-                torrent->local_bitfield = checked_bitfield.release_value();
-                torrent->bitfield_is_up_to_date = true;
-                on_success();
-            }
-        });
-    });
-
-    dbgln("We have {}/{} pieces", torrent->local_bitfield.ones(), torrent->piece_count);
-}
-
 void Engine::stop_torrent(InfoHash info_hash)
 {
     m_event_loop->deferred_invoke([&, info_hash] {
@@ -225,25 +149,9 @@ Engine::Engine()
 
     m_thread->start();
 
-    m_checker.on_stats_update = [&] (CheckerStats stats) {
+    m_checker.on_stats_update = [&](CheckerStats stats) {
         m_event_loop->deferred_invoke([&, stats = move(stats)] {
             m_checker_stats = stats;
-        });
-    };
-
-    m_comm.on_peer_disconnect = [&](ConnectionId connection_id, DeprecatedString reason) {
-        m_event_loop->deferred_invoke([&, connection_id, reason] {
-            dbgln("Disconnected {}: {}", connection_id, reason);
-            peer_disconnected(connection_id, reason);
-        });
-    };
-
-    m_comm.on_message_receive = [&](ConnectionId connection_id, ReadonlyBytes message_bytes) {
-        m_event_loop->deferred_invoke([&, connection_id, buffer = MUST(ByteBuffer::copy(message_bytes))] {
-            auto err = parse_input_message(connection_id, buffer.bytes());
-            if (err.is_error()) {
-                m_comm.close_connection(connection_id, DeprecatedString::formatted("Error parsing input message for connection id {}: {}", connection_id, err.error().string_literal()));
-            }
         });
     };
 
@@ -265,6 +173,42 @@ Engine::Engine()
 
             dbgln("Peer connected: {}", *peer);
             m_comm.send_message(connection_id, make<BitFieldMessage>(peer->torrent->local_bitfield));
+        });
+    };
+
+    m_comm.on_peer_disconnect = [&](ConnectionId connection_id, DeprecatedString reason) {
+        m_event_loop->deferred_invoke([&, connection_id, reason] {
+            dbgln("Disconnected {}: {}", connection_id, reason);
+
+            RefPtr<Peer> peer;
+            if (m_connecting_peers.contains(connection_id)) {
+                peer = m_connecting_peers.take(connection_id).release_value();
+            } else {
+                auto peer_context = m_connected_peers.take(connection_id).release_value();
+                peer = peer_context->peer;
+
+                auto torrent = peer->torrent;
+                for (auto const& piece_index : peer_context->interesting_pieces) {
+                    torrent->missing_pieces.get(piece_index).value()->havers.remove(peer_context);
+                }
+
+                auto& piece = peer_context->incoming_piece;
+                if (piece.index.has_value() && torrent->state == TorrentState::STARTED) {
+                    insert_piece_in_heap(torrent, piece.index.value());
+                    piece.index = {};
+                }
+
+                torrent->connected_peers.remove(peer_context);
+            }
+
+            // FIXME: use an enum
+            if (reason == "Stopping torrent")
+                peer->status = PeerStatus::Available;
+            else
+                peer->status = PeerStatus::Errored;
+
+            if (peer->torrent->local_bitfield.progress() < 100 && peer->torrent->state == TorrentState::STARTED)
+                connect_more_peers(peer->torrent);
         });
     };
 
@@ -321,11 +265,82 @@ Engine::Engine()
         });
     };
 
+    m_comm.on_message_receive = [&](ConnectionId connection_id, ReadonlyBytes message_bytes) {
+        m_event_loop->deferred_invoke([&, connection_id, buffer = MUST(ByteBuffer::copy(message_bytes))] {
+            auto err = parse_input_message(connection_id, buffer.bytes());
+            if (err.is_error()) {
+                m_comm.close_connection(connection_id, DeprecatedString::formatted("Error parsing input message for connection id {}: {}", connection_id, err.error().string_literal()));
+            }
+        });
+    };
+
     m_comm.on_connection_stats_update = [&](NonnullOwnPtr<HashMap<ConnectionId, ConnectionStats>> stats) {
         m_event_loop->deferred_invoke([&, stats = move(stats)]() mutable {
             m_connection_stats = move(stats);
         });
     };
+}
+
+NonnullOwnPtr<HashMap<InfoHash, TorrentView>> Engine::torrents_views()
+{
+    auto views = make<HashMap<InfoHash, TorrentView>>();
+    for (auto const& [info_hash, torrent] : m_torrents) {
+        Vector<PeerView> pviews;
+        pviews.ensure_capacity(torrent->connected_peers.size());
+
+        torrent->download_speed = 0;
+        torrent->upload_speed = 0;
+        for (auto const& peer : torrent->connected_peers) {
+            auto const& stats = m_connection_stats->get(peer->connection_id).value_or({});
+            pviews.append(PeerView(
+                peer->id,
+                peer->peer->address.ipv4_address().to_deprecated_string(),
+                peer->peer->address.port(),
+                peer->bitfield.progress(),
+                stats.download_speed,
+                stats.upload_speed,
+                stats.bytes_downloaded,
+                stats.bytes_uploaded,
+                peer->we_are_choking_peer,
+                peer->peer_is_choking_us,
+                peer->we_are_interested_in_peer,
+                peer->peer_is_interested_in_us,
+                true));
+            torrent->download_speed += stats.download_speed;
+            torrent->upload_speed += stats.upload_speed;
+        }
+
+        views->set(info_hash, TorrentView(info_hash, torrent->display_name, torrent->total_length, torrent->state, torrent->local_bitfield.progress(), m_checker_stats.get(info_hash).value_or(0), torrent->download_speed, torrent->upload_speed, torrent->data_path, pviews, torrent->local_bitfield));
+    }
+
+    return views;
+}
+
+void Engine::check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_success)
+{
+    torrent->state = TorrentState::CHECKING;
+    auto data_file_map = make<TorrentDataFileMap>(torrent->piece_hashes, torrent->nominal_piece_length, torrent->local_files);
+    m_checker.check(torrent->info_hash, move(data_file_map), torrent->piece_count, [&, torrent, on_success = move(on_success)](ErrorOr<BitField> checked_bitfield) mutable {
+        m_event_loop->deferred_invoke([&, torrent, checked_bitfield = move(checked_bitfield), on_success = move(on_success)]() mutable {
+            if (checked_bitfield.is_error()) {
+                auto& err = checked_bitfield.error();
+                if (err.code() == ECANCELED) {
+                    dbgln("Torrent check cancelled");
+                    torrent->state = TorrentState::CHECKING_CANCELLED;
+                } else {
+                    dbgln("Error checking torrent: {}", err);
+                    torrent->state = TorrentState::CHECKING_FAILED;
+                }
+            } else {
+                dbgln("Torrent check succeeded");
+                torrent->local_bitfield = checked_bitfield.release_value();
+                torrent->bitfield_is_up_to_date = true;
+                on_success();
+            }
+        });
+    });
+
+    dbgln("We have {}/{} pieces", torrent->local_bitfield.ones(), torrent->piece_count);
 }
 
 void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
@@ -361,49 +376,6 @@ void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
         }
         ++peer_it;
     }
-}
-
-u64 Engine::get_available_peers_count(NonnullRefPtr<Torrent> torrent) const
-{
-    u64 count = 0;
-    for (auto const& peer : torrent->peers) {
-        if (peer.value->status == PeerStatus::Available)
-            count++;
-    }
-    return count;
-}
-
-void Engine::peer_disconnected(ConnectionId connection_id, DeprecatedString reason)
-{
-    RefPtr<Peer> peer;
-    if (m_connecting_peers.contains(connection_id)) {
-        peer = m_connecting_peers.take(connection_id).release_value();
-    } else {
-        auto peer_context = m_connected_peers.take(connection_id).release_value();
-        peer = peer_context->peer;
-
-        auto torrent = peer->torrent;
-        for (auto const& piece_index : peer_context->interesting_pieces) {
-            torrent->missing_pieces.get(piece_index).value()->havers.remove(peer_context);
-        }
-
-        auto& piece = peer_context->incoming_piece;
-        if (piece.index.has_value() && torrent->state == TorrentState::STARTED) {
-            insert_piece_in_heap(torrent, piece.index.value());
-            piece.index = {};
-        }
-
-        torrent->connected_peers.remove(peer_context);
-    }
-
-    // FIXME: use an enum
-    if (reason == "Stopping torrent")
-        peer->status = PeerStatus::Available;
-    else
-        peer->status = PeerStatus::Errored;
-
-    if (peer->torrent->local_bitfield.progress() < 100 && peer->torrent->state == TorrentState::STARTED)
-        connect_more_peers(peer->torrent);
 }
 
 ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerContext> peer)
@@ -477,7 +449,7 @@ ErrorOr<void> Engine::piece_or_peer_availability_updated(NonnullRefPtr<Torrent> 
             if (!haver->peer_is_choking_us && !haver->active) {
                 dbgln("Requesting piece {} from peer {}", next_piece_index, haver);
                 haver->active = true;
-                u32 block_length = min(BlockLength, torrent->piece_length(next_piece_index));
+                u32 block_length = min(BLOCK_LENGTH, torrent->piece_length(next_piece_index));
                 m_comm.send_message(haver->connection_id, make<RequestMessage>(next_piece_index, 0, block_length));
 
                 found_peer = true;
@@ -607,7 +579,12 @@ ErrorOr<void> Engine::handle_bitfield(NonnullOwnPtr<BitFieldMessage> bitfield, N
 
         TRY(piece_or_peer_availability_updated(torrent));
     } else {
-        if (get_available_peers_count(torrent) > 0) {
+        u64 available_peer_count = 0;
+        for (auto const& [_, p] : torrent->peers) {
+            if (p->status == PeerStatus::Available)
+                available_peer_count++;
+        }
+        if (available_peer_count > 0) {
             // TODO: set error type so we can connect to it again later if we need to
             // TODO: we have no idea if other peers will be reacheable or have better piece availability.
             m_comm.close_connection(peer->connection_id, "Peer has no interesting pieces, and other peers are out there, disconnecting.");
@@ -685,7 +662,7 @@ ErrorOr<void> Engine::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, No
             insert_piece_in_heap(torrent, index);
             TRY(piece_or_peer_availability_updated(torrent));
         } else {
-            auto next_block_length = min((size_t)BlockLength, (size_t)piece.length - piece.offset);
+            auto next_block_length = min((size_t)BLOCK_LENGTH, (size_t)piece.length - piece.offset);
             m_comm.send_message(peer->connection_id, make<RequestMessage>(index, piece.offset, next_block_length));
         }
     }
