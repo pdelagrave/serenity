@@ -14,14 +14,14 @@
 #include <AK/Vector.h>
 
 namespace Bits {
-struct PeerContext;
+struct PeerSession;
 
 struct PieceStatus : public RefCounted<PieceStatus> {
     PieceStatus(u64 index_in_torrent);
     Optional<size_t> index_in_heap = {};
     u64 index_in_torrent;
     size_t key() const;
-    HashTable<NonnullRefPtr<Bits::PeerContext>> havers;
+    HashTable<NonnullRefPtr<Bits::PeerSession>> havers;
     bool currently_downloading { false };
 };
 

@@ -5,9 +5,9 @@
  */
 
 #include "PieceHeap.h"
-#include "PeerContext.h"
-#include "Torrent.h"
 #include "Peer.h"
+#include "PeerSession.h"
+#include "Torrent.h"
 
 namespace Bits {
 

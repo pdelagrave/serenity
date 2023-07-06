@@ -5,7 +5,7 @@
  */
 
 #include "Peer.h"
-#include "PeerContext.h"
+#include "PeerSession.h"
 #include "Torrent.h"
 
 namespace Bits {

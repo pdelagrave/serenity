@@ -16,7 +16,7 @@ set(SOURCES
         LibBits/Engine.cpp
         LibBits/Files.cpp
         LibBits/MetaInfo.cpp
-        LibBits/PeerContext.cpp
+        LibBits/PeerSession.cpp
         LibBits/Peer.cpp
         LibBits/PieceHeap.cpp
         LibBits/TorrentDataFileMap.cpp

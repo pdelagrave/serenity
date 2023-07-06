@@ -4,13 +4,13 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include "PeerContext.h"
+#include "PeerSession.h"
 #include "Peer.h"
 #include "Torrent.h"
 
 namespace Bits {
 
-PeerContext::PeerContext(NonnullRefPtr<Peer> peer, ConnectionId connection_id, PeerId id)
+PeerSession::PeerSession(NonnullRefPtr<Peer> peer, ConnectionId connection_id, PeerId id)
     : peer(peer)
     , connection_id(connection_id)
     , id(id)
@@ -21,8 +21,8 @@ PeerContext::PeerContext(NonnullRefPtr<Peer> peer, ConnectionId connection_id, P
 }
 
 template<>
-struct AK::Formatter<Bits::PeerContext> : AK::Formatter<FormatString> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::PeerContext const& value)
+struct AK::Formatter<Bits::PeerSession> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, Bits::PeerSession const& value)
     {
         return Formatter<FormatString>::format(builder, "{}"sv, value.peer);
     }

@@ -18,7 +18,7 @@
 
 namespace Bits {
 
-struct PeerContext;
+struct PeerSession;
 struct Peer;
 
 enum class TorrentState {
@@ -58,7 +58,7 @@ struct Torrent : public RefCounted<Torrent> {
     PieceHeap piece_heap;
     HashMap<u64, RefPtr<PieceStatus>> missing_pieces;
     HashMap<Core::SocketAddress, NonnullRefPtr<Peer>> peers;
-    HashTable<NonnullRefPtr<PeerContext>> connected_peers;
+    HashTable<NonnullRefPtr<PeerSession>> peer_sessions;
     u64 download_speed { 0 };
     u64 upload_speed { 0 };
 

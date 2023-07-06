@@ -23,11 +23,11 @@ struct Torrent;
 struct Peer : public RefCounted<Peer> {
     Peer(Core::SocketAddress address, NonnullRefPtr<Torrent> torrent);
 
-    const Core::SocketAddress address;
+    Core::SocketAddress const address;
     NonnullRefPtr<Torrent> const torrent;
     PeerStatus status = PeerStatus::Available;
 
-    // FIXME ugly hack, should not be used to temporarily save the id before creating the peercontext.
+    // FIXME ugly hack, should not be used to temporarily save the id before creating the PeerSession.
     Optional<PeerId> id_from_handshake;
 
     static DeprecatedString status_string(PeerStatus);

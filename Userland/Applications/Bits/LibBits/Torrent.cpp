@@ -6,7 +6,7 @@
 
 #include "Torrent.h"
 #include "Peer.h"
-#include "PeerContext.h"
+#include "PeerSession.h"
 
 namespace Bits {
 ErrorOr<String> state_to_string(TorrentState state)

@@ -17,12 +17,12 @@ namespace Bits {
 struct Torrent;
 struct Peer;
 
-struct PeerContext : public RefCounted<PeerContext> {
-    PeerContext(NonnullRefPtr<Peer> peer, ConnectionId connection_id, PeerId id);
+struct PeerSession : public RefCounted<PeerSession> {
+    PeerSession(NonnullRefPtr<Peer> peer, ConnectionId connection_id, PeerId id);
 
-    const NonnullRefPtr<Peer> peer;
-    const ConnectionId connection_id;
-    const PeerId id;
+    NonnullRefPtr<Peer> const peer;
+    ConnectionId const connection_id;
+    PeerId const id;
 
     bool active = false;
 

@@ -117,8 +117,8 @@ void Engine::stop_torrent(InfoHash info_hash)
         auto torrent = m_torrents.get(info_hash).value();
         torrent->state = TorrentState::STOPPED;
         torrent->piece_heap.clear();
-        for (auto& pcontext : m_torrents.get(info_hash).value()->connected_peers) {
-            m_comm.close_connection(pcontext->connection_id, "Stopping torrent");
+        for (auto& session : m_torrents.get(info_hash).value()->peer_sessions) {
+            m_comm.close_connection(session->connection_id, "Stopping torrent");
         }
     });
 }
@@ -167,9 +167,9 @@ Engine::Engine()
                 return;
             }
 
-            auto pcontext = make_ref_counted<PeerContext>(peer, connection_id, peer->id_from_handshake.value());
-            m_connected_peers.set(connection_id, pcontext);
-            peer->torrent->connected_peers.set(pcontext);
+            auto session = make_ref_counted<PeerSession>(peer, connection_id, peer->id_from_handshake.value());
+            m_all_sessions.set(connection_id, session);
+            peer->torrent->peer_sessions.set(session);
 
             dbgln("Peer connected: {}", *peer);
             m_comm.send_message(connection_id, make<BitFieldMessage>(peer->torrent->local_bitfield));
@@ -184,21 +184,21 @@ Engine::Engine()
             if (m_connecting_peers.contains(connection_id)) {
                 peer = m_connecting_peers.take(connection_id).release_value();
             } else {
-                auto peer_context = m_connected_peers.take(connection_id).release_value();
-                peer = peer_context->peer;
+                auto session = m_all_sessions.take(connection_id).release_value();
+                peer = session->peer;
 
                 auto torrent = peer->torrent;
-                for (auto const& piece_index : peer_context->interesting_pieces) {
-                    torrent->missing_pieces.get(piece_index).value()->havers.remove(peer_context);
+                for (auto const& piece_index : session->interesting_pieces) {
+                    torrent->missing_pieces.get(piece_index).value()->havers.remove(session);
                 }
 
-                auto& piece = peer_context->incoming_piece;
+                auto& piece = session->incoming_piece;
                 if (piece.index.has_value() && torrent->state == TorrentState::STARTED) {
                     insert_piece_in_heap(torrent, piece.index.value());
                     piece.index = {};
                 }
 
-                torrent->connected_peers.remove(peer_context);
+                torrent->peer_sessions.remove(session);
             }
 
             // FIXME: use an enum
@@ -232,7 +232,7 @@ Engine::Engine()
     m_comm.on_handshake_from_incoming_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, Core::SocketAddress address, auto accept_connection) {
         m_event_loop->deferred_invoke([&, connection_id, handshake, address, accept_connection = move(accept_connection)] {
             VERIFY(!m_connecting_peers.contains(connection_id));
-            VERIFY(!m_connected_peers.contains(connection_id));
+            VERIFY(!m_all_sessions.contains(connection_id));
 
             auto maybe_torrent = m_torrents.get(handshake.info_hash());
             if (maybe_torrent.has_value()) {
@@ -251,7 +251,7 @@ Engine::Engine()
                     return;
                 }
 
-                // FIXME: The peer likely already exists in tcontext->peers
+                // FIXME: The peer likely already exists in torrent->peers
                 auto peer = make_ref_counted<Peer>(address, *torrent);
                 peer->status = PeerStatus::InUse;
                 peer->id_from_handshake = handshake.peer_id();
@@ -286,25 +286,25 @@ NonnullOwnPtr<HashMap<InfoHash, TorrentView>> Engine::torrents_views()
     auto views = make<HashMap<InfoHash, TorrentView>>();
     for (auto const& [info_hash, torrent] : m_torrents) {
         Vector<PeerView> pviews;
-        pviews.ensure_capacity(torrent->connected_peers.size());
+        pviews.ensure_capacity(torrent->peer_sessions.size());
 
         torrent->download_speed = 0;
         torrent->upload_speed = 0;
-        for (auto const& peer : torrent->connected_peers) {
-            auto const& stats = m_connection_stats->get(peer->connection_id).value_or({});
+        for (auto const& session : torrent->peer_sessions) {
+            auto const& stats = m_connection_stats->get(session->connection_id).value_or({});
             pviews.append(PeerView(
-                peer->id,
-                peer->peer->address.ipv4_address().to_deprecated_string(),
-                peer->peer->address.port(),
-                peer->bitfield.progress(),
+                session->id,
+                session->peer->address.ipv4_address().to_deprecated_string(),
+                session->peer->address.port(),
+                session->bitfield.progress(),
                 stats.download_speed,
                 stats.upload_speed,
                 stats.bytes_downloaded,
                 stats.bytes_uploaded,
-                peer->we_are_choking_peer,
-                peer->peer_is_choking_us,
-                peer->we_are_interested_in_peer,
-                peer->peer_is_interested_in_us,
+                session->we_are_choking_peer,
+                session->peer_is_choking_us,
+                session->we_are_interested_in_peer,
+                session->peer_is_interested_in_us,
                 true));
             torrent->download_speed += stats.download_speed;
             torrent->upload_speed += stats.upload_speed;
@@ -345,17 +345,13 @@ void Engine::check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_s
 
 void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
 {
-    u64 total_connections = 0;
-    for (auto const& [_, tcontext] : m_torrents) {
-        total_connections += tcontext->connected_peers.size();
-    }
-    u64 total_connections_for_torrent = torrent->connected_peers.size();
+    u64 total_connections_for_torrent = torrent->peer_sessions.size();
     for (auto const& [_, peer] : m_connecting_peers) {
         if (peer->torrent == torrent)
             total_connections_for_torrent++;
     }
 
-    size_t available_slots = min(max_connections_per_torrent - total_connections_for_torrent, max_total_connections - total_connections);
+    size_t available_slots = min(max_connections_per_torrent - total_connections_for_torrent, max_total_connections - m_all_sessions.size());
     dbgln("We have {} available slots for new connections", available_slots);
 
     auto peer_it = torrent->peers.begin();
@@ -378,7 +374,7 @@ void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
     }
 }
 
-ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerContext> peer)
+ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerSession> peer)
 {
     auto torrent = peer->peer->torrent;
     if (TRY(torrent->data_file_map->validate_hash(index, data))) {
@@ -400,8 +396,8 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
 
         dbgln("We completed piece {}", index);
 
-        for (auto const& connected_peer : torrent->connected_peers) {
-            m_comm.send_message(connected_peer->connection_id, make<HaveMessage>(index));
+        for (auto const& session : torrent->peer_sessions) {
+            m_comm.send_message(session->connection_id, make<HaveMessage>(index));
         }
 
         if (torrent->local_bitfield.progress() == 100) {
@@ -409,9 +405,9 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
             VERIFY(torrent->piece_heap.is_empty());
             VERIFY(torrent->missing_pieces.is_empty());
 
-            for (auto const& connected_peer : torrent->connected_peers) {
-                if (connected_peer->bitfield.progress() == 100)
-                    m_comm.close_connection(connected_peer->connection_id, "Torrent fully downloaded.");
+            for (auto const& session : torrent->peer_sessions) {
+                if (session->bitfield.progress() == 100)
+                    m_comm.close_connection(session->connection_id, "Torrent fully downloaded.");
             }
 
             m_announcers.get(torrent->info_hash).value()->completed();
@@ -430,10 +426,10 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
 ErrorOr<void> Engine::piece_or_peer_availability_updated(NonnullRefPtr<Torrent> torrent)
 {
     size_t available_slots = 0;
-    for (auto const& peer : torrent->connected_peers)
-        available_slots += !peer->active;
+    for (auto const& session : torrent->peer_sessions)
+        available_slots += !session->active;
 
-    dbgln("We have {} inactive peers out of {} connected peers.", available_slots, torrent->connected_peers.size());
+    dbgln("We have {} inactive peers out of {} connected peers.", available_slots, torrent->peer_sessions.size());
     for (size_t i = 0; i < available_slots; i++) {
         dbgln("Trying to start a piece download on a {}th peer", i);
         if (torrent->piece_heap.is_empty())
@@ -469,7 +465,7 @@ ErrorOr<void> Engine::piece_or_peer_availability_updated(NonnullRefPtr<Torrent> 
     return {};
 }
 
-ErrorOr<void> Engine::peer_has_piece(u64 piece_index, NonnullRefPtr<PeerContext> peer)
+ErrorOr<void> Engine::peer_has_piece(u64 piece_index, NonnullRefPtr<PeerSession> peer)
 {
     auto& torrent = peer->peer->torrent;
     auto piece_status = torrent->missing_pieces.get(piece_index).value();
@@ -503,9 +499,9 @@ void Engine::insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_inde
 
 ErrorOr<void> Engine::parse_input_message(ConnectionId connection_id, ReadonlyBytes message_bytes)
 {
-    NonnullRefPtr<PeerContext> peer = *m_connected_peers.get(connection_id).value();
-    if (peer->peer->torrent->state != TorrentState::STARTED) {
-        dbgln("Discarding message from peer {} because torrent is not started anymore", peer->peer->address);
+    NonnullRefPtr<PeerSession> session = *m_all_sessions.get(connection_id).value();
+    if (session->peer->torrent->state != TorrentState::STARTED) {
+        dbgln("Discarding message from peer {} because torrent is not started anymore", session->peer->address);
         return {};
     }
     auto stream = FixedMemoryStream(message_bytes);
@@ -517,30 +513,30 @@ ErrorOr<void> Engine::parse_input_message(ConnectionId connection_id, ReadonlyBy
 
     switch (message_type) {
     case MessageType::Choke:
-        peer->peer_is_choking_us = true;
-        TRY(piece_or_peer_availability_updated(peer->peer->torrent));
+        session->peer_is_choking_us = true;
+        TRY(piece_or_peer_availability_updated(session->peer->torrent));
         break;
     case MessageType::Unchoke:
-        peer->peer_is_choking_us = false;
-        TRY(piece_or_peer_availability_updated(peer->peer->torrent));
+        session->peer_is_choking_us = false;
+        TRY(piece_or_peer_availability_updated(session->peer->torrent));
         break;
     case MessageType::Interested:
-        TRY(handle_interested(peer));
+        TRY(handle_interested(session));
         break;
     case MessageType::NotInterested:
-        peer->peer_is_interested_in_us = false;
+        session->peer_is_interested_in_us = false;
         break;
     case MessageType::Have:
-        TRY(handle_have(make<HaveMessage>(stream), peer));
+        TRY(handle_have(make<HaveMessage>(stream), session));
         break;
     case MessageType::Bitfield:
-        TRY(handle_bitfield(make<BitFieldMessage>(stream, peer->peer->torrent->piece_count), peer));
+        TRY(handle_bitfield(make<BitFieldMessage>(stream, session->peer->torrent->piece_count), session));
         break;
     case MessageType::Request:
-        TRY(handle_request(make<RequestMessage>(stream), peer));
+        TRY(handle_request(make<RequestMessage>(stream), session));
         break;
     case MessageType::Piece:
-        TRY(handle_piece(make<PieceMessage>(stream), peer));
+        TRY(handle_piece(make<PieceMessage>(stream), session));
         break;
     case MessageType::Cancel:
         // TODO implement this.
@@ -553,7 +549,7 @@ ErrorOr<void> Engine::parse_input_message(ConnectionId connection_id, ReadonlyBy
     return {};
 }
 
-ErrorOr<void> Engine::handle_bitfield(NonnullOwnPtr<BitFieldMessage> bitfield, NonnullRefPtr<PeerContext> peer)
+ErrorOr<void> Engine::handle_bitfield(NonnullOwnPtr<BitFieldMessage> bitfield, NonnullRefPtr<PeerSession> peer)
 {
     peer->bitfield = bitfield->bitfield;
     dbgln("Receiving BitField from peer: {}", peer->bitfield);
@@ -596,7 +592,7 @@ ErrorOr<void> Engine::handle_bitfield(NonnullOwnPtr<BitFieldMessage> bitfield, N
     return {};
 }
 
-ErrorOr<void> Engine::handle_have(NonnullOwnPtr<HaveMessage> have_message, NonnullRefPtr<PeerContext> peer)
+ErrorOr<void> Engine::handle_have(NonnullOwnPtr<HaveMessage> have_message, NonnullRefPtr<PeerSession> peer)
 {
     auto piece_index = have_message->piece_index;
     dbgln("Peer has piece {}, setting in peer bitfield, bitfield size: {}", piece_index, peer->bitfield.size());
@@ -621,7 +617,7 @@ ErrorOr<void> Engine::handle_have(NonnullOwnPtr<HaveMessage> have_message, Nonnu
     return {};
 }
 
-ErrorOr<void> Engine::handle_interested(NonnullRefPtr<Bits::PeerContext> peer)
+ErrorOr<void> Engine::handle_interested(NonnullRefPtr<Bits::PeerSession> peer)
 {
     peer->peer_is_interested_in_us = true;
     peer->we_are_choking_peer = false;
@@ -629,7 +625,7 @@ ErrorOr<void> Engine::handle_interested(NonnullRefPtr<Bits::PeerContext> peer)
     return {};
 }
 
-ErrorOr<void> Engine::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, NonnullRefPtr<PeerContext> peer)
+ErrorOr<void> Engine::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, NonnullRefPtr<PeerSession> peer)
 {
     auto torrent = peer->peer->torrent;
     auto block_size = piece_message->block.size();
@@ -669,7 +665,7 @@ ErrorOr<void> Engine::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, No
     return {};
 }
 
-ErrorOr<void> Engine::handle_request(NonnullOwnPtr<RequestMessage> request, NonnullRefPtr<PeerContext> peer)
+ErrorOr<void> Engine::handle_request(NonnullOwnPtr<RequestMessage> request, NonnullRefPtr<PeerSession> peer)
 {
     // TODO: validate request parameters, disconnect peer if they're invalid.
     auto torrent = peer->peer->torrent;
