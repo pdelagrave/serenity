@@ -165,7 +165,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
     widget->m_torrents_table_view->set_model(widget->m_torrent_model);
     widget->m_torrents_table_view->set_selection_mode(GUI::AbstractView::SelectionMode::MultiSelection);
 
-    widget->m_torrents_table_view->on_context_menu_request = [widget, start_torrent_action, stop_torrent_action, cancel_checking_torrent_action](const GUI::ModelIndex& model_index, const GUI::ContextMenuEvent& event) {
+    widget->m_torrents_table_view->on_context_menu_request = [widget, start_torrent_action, stop_torrent_action, cancel_checking_torrent_action](GUI::ModelIndex const& model_index, GUI::ContextMenuEvent const& event) {
         if (model_index.is_valid()) {
             widget->m_torrent_context_menu = GUI::Menu::construct();
             Bits::TorrentState state = widget->m_torrent_model->torrent_at(model_index.row()).state;
@@ -207,8 +207,8 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
         update_peer_tab_widget();
     };
 
-    widget->m_engine->register_views_update_callback(200, [&, widget, &event_loop = Core::EventLoop::current(), update_general_tab_widget, update_peer_tab_widget] (NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>> torrents) {
-        event_loop.deferred_invoke([&, widget, update_general_tab_widget, update_peer_tab_widget, torrents = move(torrents)] () mutable {
+    widget->m_engine->register_views_update_callback(200, [&, widget, &event_loop = Core::EventLoop::current(), update_general_tab_widget, update_peer_tab_widget](NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>> torrents) {
+        event_loop.deferred_invoke([&, widget, update_general_tab_widget, update_peer_tab_widget, torrents = move(torrents)]() mutable {
             u64 progress = 0;
             for (auto const& torrent : *torrents) {
                 progress += torrent.value.progress;

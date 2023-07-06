@@ -18,6 +18,7 @@ namespace Bits {
 
 class MultiFileMapperStream : public SeekableStream {
     AK_MAKE_NONCOPYABLE(MultiFileMapperStream);
+
 public:
     static NonnullOwnPtr<MultiFileMapperStream> create(Vector<NonnullRefPtr<LocalFile>> files);
 
@@ -46,8 +47,8 @@ private:
             , fs_file(move(fs_file))
         {
         }
-        const size_t file_index;
-        const i64 relative_zero_offset; // also used as the key of the BST
+        size_t const file_index;
+        i64 const relative_zero_offset; // also used as the key of the BST
         Optional<NonnullOwnPtr<SeekableStream>> const fs_file;
     };
 
@@ -68,7 +69,7 @@ private:
     NonnullRefPtr<MappedFilePosition> m_current_file;
     Vector<NonnullRefPtr<MappedFilePosition>> m_files_positions;
     RedBlackTree<u64, NonnullRefPtr<MappedFilePosition>> m_files_positions_by_offset;
-    const u64 m_total_length;
+    u64 const m_total_length;
     u64 m_current_offset { 0 };
 };
 

@@ -10,7 +10,7 @@
 
 namespace Bits {
 
-ErrorOr<void> create_file_with_subdirs(const AK::DeprecatedString& absolute_path);
+ErrorOr<void> create_file_with_subdirs(AK::DeprecatedString const& absolute_path);
 
 class File : public RefCounted<File> {
 public:
@@ -21,8 +21,8 @@ public:
     i64 length() { return m_length; };
 
 private:
-    const DeprecatedString m_path;
-    const i64 m_length;
+    DeprecatedString const m_path;
+    i64 const m_length;
 };
 
 class LocalFile : public RefCounted<LocalFile> {

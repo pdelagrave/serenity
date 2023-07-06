@@ -6,58 +6,26 @@
 
 #pragma once
 
-#include "AK/DeprecatedString.h"
-#include "AK/HashMap.h"
-#include "AK/MemoryStream.h"
-#include "AK/Stream.h"
-#include "AK/Variant.h"
-#include "AK/Vector.h"
+#include "BTypes.h"
+#include <AK/MemoryStream.h>
 
 namespace Bits {
-struct List;
-class Dict;
 
-using BEncodingType = Variant<ByteBuffer, i64, List, Dict>;
-
-struct List : public Vector<BEncodingType> {
-    using Vector<BEncodingType>::Vector;
-};
-
-class Dict : public OrderedHashMap<DeprecatedString, BEncodingType> {
-    using OrderedHashMap<DeprecatedString, BEncodingType>::OrderedHashMap;
-
-public:
-    template<typename T>
-    T get(DeprecatedString key)
-    {
-        return OrderedHashMap<DeprecatedString, BEncodingType>::get(key).value().get<T>();
-    }
-
-    template<typename T>
-    bool has(DeprecatedString key)
-    {
-        return OrderedHashMap<DeprecatedString, BEncodingType>::get(key).value().has<T>();
-    }
-
-    DeprecatedString get_string(DeprecatedString key)
-    {
-        return DeprecatedString::from_utf8(get<ByteBuffer>(key).bytes()).release_value();
-    }
-};
-
+// The 'bencoding' section of https://www.bittorrent.org/beps/bep_0003.html
 class BDecoder {
-public:
-    template<typename T>
-    static ErrorOr<T> parse(Stream& stream)
-    {
-        return TRY(parse_bencoded(stream, nullptr)).get<T>();
-    }
 
+public:
     template<typename T>
     static ErrorOr<T> parse(ReadonlyBytes& bytes)
     {
         auto stream = FixedMemoryStream(bytes);
         return TRY(parse<T>(stream));
+    }
+
+    template<typename T>
+    static ErrorOr<T> parse(Stream& stream)
+    {
+        return TRY(parse_bencoded(stream, nullptr)).get<T>();
     }
 
 private:
@@ -67,4 +35,5 @@ private:
     static ErrorOr<Dict> parse_dictionary(Stream&);
     static ErrorOr<List> parse_list(Stream&);
 };
+
 }

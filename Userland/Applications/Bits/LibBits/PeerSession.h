@@ -6,7 +6,8 @@
 
 #pragma once
 
-#include "BitTorrentMessage.h"
+#include "BitField.h"
+#include "FixedSizeByteString.h"
 #include "Net/Connection.h"
 #include <AK/RefCounted.h>
 #include <LibCore/DateTime.h>

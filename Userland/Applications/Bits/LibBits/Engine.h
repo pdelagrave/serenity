@@ -9,6 +9,7 @@
 #include "Announcer.h"
 #include "Checker.h"
 #include "FixedSizeByteString.h"
+#include "Message.h"
 #include "MetaInfo.h"
 #include "Net/Comm.h"
 #include "Peer.h"

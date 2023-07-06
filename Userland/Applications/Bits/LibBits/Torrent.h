@@ -10,6 +10,7 @@
 #include "FixedSizeByteString.h"
 #include "PieceHeap.h"
 #include "TorrentDataFileMap.h"
+#include "TorrentState.h"
 #include <AK/HashMap.h>
 #include <AK/NonnullOwnPtr.h>
 #include <AK/NonnullRefPtr.h>
@@ -21,32 +22,22 @@ namespace Bits {
 struct PeerSession;
 struct Peer;
 
-enum class TorrentState {
-    ERROR,
-    CHECKING,
-    CHECKING_CANCELLED,
-    CHECKING_FAILED,
-    STOPPED,
-    STARTED,
-    SEEDING
-};
-
 ErrorOr<String> state_to_string(TorrentState state);
 
 struct Torrent : public RefCounted<Torrent> {
     Torrent(DeprecatedString display_name, Vector<NonnullRefPtr<LocalFile>>, ByteBuffer piece_hashes, DeprecatedString data_path, InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port);
 
-    const DeprecatedString display_name;
+    DeprecatedString const display_name;
     Vector<NonnullRefPtr<LocalFile>> const local_files;
-    const ByteBuffer piece_hashes;
-    const DeprecatedString data_path;
-    const InfoHash info_hash;
-    const PeerId local_peer_id;
-    const u64 tracker_session_key; // https://www.bittorrent.org/beps/bep_0007.html
-    const u64 piece_count;
-    const u64 nominal_piece_length; // Is "nominal" used correctly here?
-    const u64 total_length;
-    const u16 local_port;
+    ByteBuffer const piece_hashes;
+    DeprecatedString const data_path;
+    InfoHash const info_hash;
+    PeerId const local_peer_id;
+    u64 const tracker_session_key;  // https://www.bittorrent.org/beps/bep_0007.html
+    u64 const piece_count;
+    u64 const nominal_piece_length; // Is "nominal" used correctly here?
+    u64 const total_length;
+    u16 const local_port;
     BitField local_bitfield;
     bool bitfield_is_up_to_date = false;
     NonnullOwnPtr<TorrentDataFileMap> data_file_map;

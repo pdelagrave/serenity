@@ -39,7 +39,7 @@ public:
     u32 size() const { return serialized.size(); }
 
     ByteBuffer serialized;
-    const Type type;
+    Type const type;
 
 protected:
     class StreamWritable {
@@ -115,7 +115,7 @@ public:
         , bitfield(BitField::read_from_stream(stream, size).release_value_but_fixme_should_propagate_errors())
     {
     }
-    const BitField bitfield;
+    BitField const bitfield;
     DeprecatedString to_string() const override;
 };
 
@@ -185,7 +185,7 @@ public:
 
     BigEndian<u32> const piece_index;
     BigEndian<u32> const begin_offset;
-    const ByteBuffer block;
+    ByteBuffer const block;
     DeprecatedString to_string() const override;
 };
 

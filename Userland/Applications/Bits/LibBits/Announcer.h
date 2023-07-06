@@ -24,6 +24,7 @@ public:
     static ErrorOr<NonnullRefPtr<Announcer>> create(InfoHash info_hash, AK::URL announce_url, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success);
     void completed();
     void stopped();
+
 protected:
     virtual void timer_event(Core::TimerEvent& event) override;
 
@@ -40,13 +41,13 @@ private:
     static DeprecatedString url_encode_bytes(ReadonlyBytes bytes);
 
     NonnullRefPtr<Protocol::RequestClient> m_http_client;
-    const InfoHash m_info_hash;
-    const AK::URL m_announce_url;
-    const PeerId m_local_peer_id;
-    const u16 m_listen_port;
-    const u64 m_torrent_session_key;
-    const Function<AnnounceStats()> m_get_stats_for_announce;
-    const Function<void(Vector<Core::SocketAddress>)> m_on_success;
+    InfoHash const m_info_hash;
+    AK::URL const m_announce_url;
+    PeerId const m_local_peer_id;
+    u16 const m_listen_port;
+    u64 const m_torrent_session_key;
+    Function<AnnounceStats()> const m_get_stats_for_announce;
+    Function<void(Vector<Core::SocketAddress>)> const m_on_success;
 
     HashTable<NonnullRefPtr<Protocol::Request>> m_active_requests;
     int m_interval = 60 * 1000;

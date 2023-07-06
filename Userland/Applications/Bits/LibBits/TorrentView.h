@@ -6,9 +6,11 @@
 
 #pragma once
 
+#include "BitField.h"
 #include "FixedSizeByteString.h"
-#include "Torrent.h"
+#include "TorrentState.h"
 #include <AK/DeprecatedString.h>
+#include <AK/Vector.h>
 
 namespace Bits {
 

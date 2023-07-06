@@ -7,7 +7,7 @@
 #include "Comm.h"
 #include "HandshakeMessage.h"
 // FIXME: Ideally Comm would only know about the abstract Message class and shouldn't be exposed to any specific message types. Handshake and Keepalives are the only special message types and handled by Comm.
-#include "../BitTorrentMessage.h"
+#include "../Message.h"
 #include <LibCore/System.h>
 
 namespace Bits {

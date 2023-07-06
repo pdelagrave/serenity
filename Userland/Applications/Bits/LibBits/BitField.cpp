@@ -5,6 +5,7 @@
  */
 
 #include "BitField.h"
+#include <AK/Stream.h>
 
 namespace Bits {
 
@@ -29,13 +30,6 @@ BitField::BitField(ReadonlyBytes data, u64 size)
     }
 }
 
-//BitField::BitField(BitField const& other)
-//{
-//    m_size = other.m_size;
-//    m_data = other.m_data;
-//    m_ones = other.m_ones;
-//}
-
 bool BitField::get(u64 index) const
 {
     if (index >= m_size) // useful for when the peer exists, and we haven't received its bitfield yet
@@ -55,6 +49,31 @@ void BitField::set(u64 index, bool value)
             m_data[index / 8] &= ~(1 << (7 - (index % 8)));
         }
     }
+}
+
+u64 BitField::ones() const
+{
+    return m_ones;
+}
+u64 BitField::zeroes() const
+{
+    return m_size - m_ones;
+}
+float BitField::progress() const
+{
+    return (float)m_ones * 100 / (float)m_size;
+}
+u64 BitField::size() const
+{
+    return m_size;
+}
+u64 BitField::data_size() const
+{
+    return m_data.size();
+}
+ReadonlyBytes BitField::bytes() const
+{
+    return m_data.bytes();
 }
 
 ErrorOr<void> BitField::write_to_stream(Stream& stream) const

@@ -5,9 +5,10 @@
  */
 
 #include "MetaInfo.h"
-#include "Userland/Applications/Bits/LibBits/Bencode/BDecoder.h"
-#include "Userland/Applications/Bits/LibBits/Bencode/BEncoder.h"
-#include "Userland/Libraries/LibCrypto/Hash/HashManager.h"
+#include "Bencode/BDecoder.h"
+#include "Bencode/BEncoder.h"
+#include <AK/MemoryStream.h>
+#include <LibCrypto/Hash/HashManager.h>
 
 namespace Bits {
 
@@ -64,6 +65,7 @@ ErrorOr<NonnullOwnPtr<MetaInfo>> MetaInfo::create(Stream& stream)
 
     return meta_info;
 }
+
 i64 MetaInfo::total_length()
 {
     return m_total_length;

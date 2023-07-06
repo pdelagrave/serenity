@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include "BitTorrentMessage.h"
+#include "Message.h"
 
 namespace Bits {
 

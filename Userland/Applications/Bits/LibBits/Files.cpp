@@ -12,7 +12,7 @@
 
 namespace Bits {
 
-ErrorOr<void> create_file_with_subdirs(const AK::DeprecatedString& absolute_path)
+ErrorOr<void> create_file_with_subdirs(AK::DeprecatedString const& absolute_path)
 {
     // Most of this code is copied from Userland/Utilities/mkdir/mkdir.cpp
     mode_t const default_mode = 0755;

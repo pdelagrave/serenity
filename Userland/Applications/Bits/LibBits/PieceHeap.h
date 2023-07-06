@@ -14,6 +14,7 @@
 #include <AK/Vector.h>
 
 namespace Bits {
+
 struct PeerSession;
 
 struct PieceStatus : public RefCounted<PieceStatus> {

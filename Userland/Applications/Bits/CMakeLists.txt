@@ -11,10 +11,10 @@ set(SOURCES
         LibBits/Net/Connection.cpp
         LibBits/Announcer.cpp
         LibBits/BitField.cpp
-        LibBits/BitTorrentMessage.cpp
         LibBits/Checker.cpp
         LibBits/Engine.cpp
         LibBits/Files.cpp
+        LibBits/Message.cpp
         LibBits/MetaInfo.cpp
         LibBits/PeerSession.cpp
         LibBits/Peer.cpp

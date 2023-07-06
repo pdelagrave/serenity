@@ -25,6 +25,5 @@ Connection::Connection(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Cor
     , output_message_buffer(move(output_message_buffer))
     , incoming_message_length(sizeof(HandshakeMessage))
 {
-
 }
 }

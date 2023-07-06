@@ -6,8 +6,6 @@
 
 #include "BDecoder.h"
 
-// Reference: The 'bencoding' section of https://www.bittorrent.org/beps/bep_0003.html
-
 namespace Bits {
 
 static constexpr bool is_digit(char c)
@@ -17,7 +15,7 @@ static constexpr bool is_digit(char c)
 
 ErrorOr<BEncodingType> BDecoder::parse_bencoded(Stream& stream, u8* byte_already_read)
 {
-    const u8 next_byte = byte_already_read != nullptr ? *byte_already_read : TRY(stream.read_value<u8>());
+    u8 const next_byte = byte_already_read != nullptr ? *byte_already_read : TRY(stream.read_value<u8>());
     if (next_byte == 'i') {
         return BEncodingType(TRY(parse_integer(stream)));
     } else if (next_byte == 'l') {

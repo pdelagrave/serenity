@@ -6,15 +6,15 @@
 
 #pragma once
 
-#include "Applications/Bits/Tabs/GeneralTorrentInfoWidget.h"
 #include "LibBits/Engine.h"
-#include "Userland/Applications/Bits/Tabs/PeersTabWidget.h"
+#include "Tabs/GeneralTorrentInfoWidget.h"
+#include "Tabs/PeersTabWidget.h"
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
 
 class TorrentModel final : public GUI::Model {
 public:
-    virtual int column_count(GUI::ModelIndex const& index= GUI::ModelIndex()) const override;
+    virtual int column_count(GUI::ModelIndex const& index = GUI::ModelIndex()) const override;
     virtual ErrorOr<String> column_name(int i) const override;
     virtual GUI::Variant data(GUI::ModelIndex const& index, GUI::ModelRole role) const override;
     virtual int row_count(GUI::ModelIndex const& index = GUI::ModelIndex()) const override;

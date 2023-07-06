@@ -6,27 +6,27 @@
 
 #pragma once
 
+#include <AK/Forward.h>
 #include <AK/ByteBuffer.h>
-#include <AK/Stream.h>
-#include <AK/Types.h>
+#include <AK/Format.h>
 
 namespace Bits {
+
 class BitField {
 public:
     BitField(u64 size);
     BitField(ReadonlyBytes data, u64 size);
-    //BitField(BitField const& other);
 
     bool get(u64 index) const;
     void set(u64 index, bool value);
-    u64 ones() const { return m_ones; }
-    u64 zeroes() const { return m_size - m_ones; }
-    float progress() const { return (float)m_ones * 100 / (float)m_size; }
+    u64 ones() const;
+    u64 zeroes() const;
+    float progress() const;
 
-    u64 size() const { return m_size; }
-    u64 data_size() const { return m_data.size(); }
+    u64 size() const;
+    u64 data_size() const;
 
-    ReadonlyBytes bytes() const { return m_data.bytes(); }
+    ReadonlyBytes bytes() const;
     ErrorOr<void> write_to_stream(Stream& stream) const;
     static ErrorOr<BitField> read_from_stream(Stream& stream, u64 size);
 

@@ -17,7 +17,7 @@ using ConnectionId = u64;
 struct Connection : public RefCounted<Connection> {
     static ErrorOr<NonnullRefPtr<Connection>> try_create(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier> write_notifier, size_t input_buffer_size, size_t output_buffer_size);
 
-    const ConnectionId id = { s_next_id++ };
+    ConnectionId const id = { s_next_id++ };
     NonnullOwnPtr<Core::TCPSocket> socket;
     NonnullRefPtr<Core::Notifier> write_notifier;
 

@@ -6,13 +6,16 @@
 
 #pragma once
 
-#include "BTypes.h"
-#include <AK/Stream.h>
-
 namespace Bits {
 
-class BEncoder {
-public:
-    static ErrorOr<void> bencode(BEncodingType, Stream&);
+enum class TorrentState {
+    ERROR,
+    CHECKING,
+    CHECKING_CANCELLED,
+    CHECKING_FAILED,
+    STOPPED,
+    STARTED,
+    SEEDING
 };
+
 }
