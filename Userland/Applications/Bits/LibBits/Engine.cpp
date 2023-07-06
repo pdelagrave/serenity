@@ -215,9 +215,7 @@ void Engine::register_views_update_callback(int interval_ms, Function<void(Nonnu
     });
 }
 
-Engine::Engine(bool skip_checking, bool assume_valid)
-    : m_skip_checking(skip_checking)
-    , m_assume_valid(assume_valid)
+Engine::Engine()
 {
     m_thread = Threading::Thread::construct([this]() -> intptr_t {
         m_event_loop = make<Core::EventLoop>();

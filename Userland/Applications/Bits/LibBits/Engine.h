@@ -32,7 +32,7 @@ public:
     void register_views_update_callback(int interval_ms, Function<void(NonnullOwnPtr<HashMap<InfoHash, TorrentView>>)> callback);
 
 private:
-    Engine(bool skip_checking, bool assume_valid);
+    Engine();
 
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
@@ -45,8 +45,6 @@ private:
 
     Checker m_checker;
     Comm m_comm;
-    bool m_skip_checking;
-    bool m_assume_valid;
 
     // #######################################################################################################
     const u64 max_total_connections = 100;
