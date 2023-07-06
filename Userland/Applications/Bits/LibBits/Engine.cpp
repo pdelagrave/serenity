@@ -235,7 +235,7 @@ Engine::Engine(bool skip_checking, bool assume_valid)
 
     m_comm.on_peer_disconnect = [&](ConnectionId connection_id, DeprecatedString reason) {
         m_event_loop->deferred_invoke([&, connection_id, reason] {
-            dbgln("Disconnected: {}", reason);
+            dbgln("Disconnected {}: {}", connection_id, reason);
             peer_disconnected(connection_id, reason);
         });
     };
@@ -296,6 +296,13 @@ Engine::Engine(bool skip_checking, bool assume_valid)
             if (maybe_torrent.has_value()) {
                 // TODO: Add more checks before accepting the connection.
                 auto torrent = maybe_torrent.release_value();
+
+                if (torrent->state != TorrentState::STARTED && torrent->state != TorrentState::SEEDING) {
+                    dbgln("Refusing connection from {} for because torrent {} is currently {}", address, torrent->info_hash, state_to_string(torrent->state).release_value());
+                    accept_connection({});
+                    return;
+                }
+
                 if (torrent->local_peer_id == handshake.peer_id()) {
                     dbgln("Refusing connection from ourselves.");
                     accept_connection({});
