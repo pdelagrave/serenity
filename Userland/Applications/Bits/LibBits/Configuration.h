@@ -28,9 +28,11 @@ struct Configuration {
     // and developing, hence their easy configurability for now.
     static u64 constexpr DEFAULT_MAX_TOTAL_CONNECTIONS = 100;
     static u64 constexpr DEFAULT_MAX_CONNECTIONS_PER_TORRENT = 10;
+    static u16 constexpr DEFAULT_LISTEN_PORT = 27007;
 
     u64 const max_total_connections;
     u64 const max_connections_per_torrent;
+    u16 const listen_port;
 };
 
 }

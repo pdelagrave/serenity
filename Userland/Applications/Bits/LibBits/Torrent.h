@@ -25,7 +25,7 @@ struct Peer;
 ErrorOr<String> state_to_string(TorrentState state);
 
 struct Torrent : public RefCounted<Torrent> {
-    Torrent(DeprecatedString display_name, Vector<NonnullRefPtr<LocalFile>>, ByteBuffer piece_hashes, DeprecatedString data_path, InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port);
+    Torrent(DeprecatedString display_name, Vector<NonnullRefPtr<LocalFile>>, ByteBuffer piece_hashes, DeprecatedString data_path, InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length);
 
     DeprecatedString const display_name;
     Vector<NonnullRefPtr<LocalFile>> const local_files;
@@ -37,7 +37,6 @@ struct Torrent : public RefCounted<Torrent> {
     u64 const piece_count;
     u64 const nominal_piece_length; // Is "nominal" used correctly here?
     u64 const total_length;
-    u16 const local_port;
     BitField local_bitfield;
     bool bitfield_is_up_to_date = false;
     NonnullOwnPtr<TorrentDataFileMap> data_file_map;

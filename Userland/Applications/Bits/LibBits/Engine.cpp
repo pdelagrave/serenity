@@ -33,8 +33,7 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
             info_hash,
             PeerId::random(),
             meta_info->total_length(),
-            meta_info->piece_length(),
-            27007);
+            meta_info->piece_length());
         torrent->announce_url = meta_info->announce();
 
         m_torrents.set(info_hash, move(torrent));
@@ -98,7 +97,10 @@ void Engine::start_torrent(InfoHash info_hash)
                 }
             };
             auto info_hash = torrent->info_hash;
-            m_announcers.set(info_hash, MUST(Announcer::create(info_hash, torrent->announce_url, torrent->local_peer_id, torrent->local_port, torrent->tracker_session_key, move(get_stats_for_announce), move(on_announce_success))));
+            m_announcers.set(info_hash, MUST(Announcer::create(info_hash, torrent->announce_url, torrent->local_peer_id, m_config.listen_port, torrent->tracker_session_key, move(get_stats_for_announce), move(on_announce_success))));
+
+            // Calling this now because we might already have peers and we don't want to wait for the announce reponse, it could have failed for many reasons.
+            connect_more_peers(torrent);
         };
 
         if (torrent->bitfield_is_up_to_date) {
@@ -117,6 +119,7 @@ void Engine::stop_torrent(InfoHash info_hash)
         auto torrent = m_torrents.get(info_hash).value();
         torrent->state = TorrentState::STOPPED;
         torrent->piece_heap.clear();
+        torrent->missing_pieces.clear();
         for (auto& session : m_torrents.get(info_hash).value()->peer_sessions) {
             m_comm.close_connection(session->connection_id, "Stopping torrent");
         }
@@ -141,6 +144,7 @@ void Engine::register_views_update_callback(int interval_ms, Function<void(Nonnu
 
 Engine::Engine(Configuration config)
     : m_config(move(config))
+    , m_comm(Comm(m_config.listen_port))
 {
     m_thread = Threading::Thread::construct([this]() -> intptr_t {
         m_event_loop = make<Core::EventLoop>();

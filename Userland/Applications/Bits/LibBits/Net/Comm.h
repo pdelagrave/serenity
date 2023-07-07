@@ -32,7 +32,7 @@ class Comm : public Core::Object {
     C_OBJECT(Comm);
 
 public:
-    Comm();
+    Comm(u16 const listen_port);
     void close_connection(ConnectionId connection_id, DeprecatedString reason);
 
     Function<void(ConnectionId, DeprecatedString)> on_peer_disconnect;

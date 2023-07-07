@@ -12,10 +12,10 @@
 
 namespace Bits {
 
-Comm::Comm()
+Comm::Comm(u16 const listen_port)
     : m_server(Core::TCPServer::try_create(this).release_value())
 {
-    m_thread = Threading::Thread::construct([this]() -> intptr_t {
+    m_thread = Threading::Thread::construct([this, listen_port]() -> intptr_t {
         m_event_loop = make<Core::EventLoop>();
 
         auto err = m_server->set_blocking(false);
@@ -29,7 +29,7 @@ Comm::Comm()
             if (err.is_error())
                 dbgln("Failed to accept connection: {}", err.error());
         };
-        err = m_server->listen(IPv4Address::from_string("0.0.0.0"sv).release_value(), 27007);
+        err = m_server->listen(IPv4Address::from_string("0.0.0.0"sv).release_value(), listen_port);
         if (err.is_error()) {
             dbgln("Failed to listen: {}", err.error());
             return 1;

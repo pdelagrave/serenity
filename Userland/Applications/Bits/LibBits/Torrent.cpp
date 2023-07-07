@@ -31,7 +31,7 @@ ErrorOr<String> state_to_string(TorrentState state)
     }
 }
 
-Torrent::Torrent(DeprecatedString display_name, Vector<NonnullRefPtr<LocalFile>> local_files, ByteBuffer piece_hashes, DeprecatedString data_path, InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length, u16 local_port)
+Torrent::Torrent(DeprecatedString display_name, Vector<NonnullRefPtr<LocalFile>> local_files, ByteBuffer piece_hashes, DeprecatedString data_path, InfoHash info_hash, PeerId local_peer_id, u64 total_length, u64 nominal_piece_length)
     : display_name(display_name)
     , local_files(local_files)
     , piece_hashes(piece_hashes)
@@ -42,7 +42,6 @@ Torrent::Torrent(DeprecatedString display_name, Vector<NonnullRefPtr<LocalFile>>
     , piece_count(ceil_div(total_length, nominal_piece_length))
     , nominal_piece_length(nominal_piece_length)
     , total_length(total_length)
-    , local_port(local_port)
     , local_bitfield(BitField(piece_count))
     , data_file_map(make<TorrentDataFileMap>(piece_hashes, nominal_piece_length, local_files))
 {
