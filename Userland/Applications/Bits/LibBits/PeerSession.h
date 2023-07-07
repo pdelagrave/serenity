@@ -46,3 +46,19 @@ struct PeerSession : public RefCounted<PeerSession> {
 };
 
 }
+
+template<>
+struct AK::Formatter<Bits::PeerSession> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, Bits::PeerSession const& session)
+    {
+        return Formatter<FormatString>::format(builder,
+            "{}/{}/{}{}{}{}/{}%"sv,
+            session.connection_id,
+            session.peer,
+            session.peer_is_choking_us ? "c" : "",
+            session.peer_is_interested_in_us ? "i" : "",
+            session.we_are_choking_peer ? "C" : "",
+            session.we_are_interested_in_peer ? "I" : "",
+            static_cast<int>(session.bitfield.progress()));
+    }
+};

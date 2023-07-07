@@ -19,11 +19,3 @@ PeerSession::PeerSession(NonnullRefPtr<Peer> peer, ConnectionId connection_id, P
 }
 
 }
-
-template<>
-struct AK::Formatter<Bits::PeerSession> : AK::Formatter<FormatString> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::PeerSession const& value)
-    {
-        return Formatter<FormatString>::format(builder, "{}"sv, value.peer);
-    }
-};

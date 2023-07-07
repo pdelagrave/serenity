@@ -343,15 +343,13 @@ void Engine::check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_s
                     torrent->state = TorrentState::CHECKING_FAILED;
                 }
             } else {
-                dbgln("Torrent check succeeded");
                 torrent->local_bitfield = checked_bitfield.release_value();
                 torrent->bitfield_is_up_to_date = true;
+                dbgln("Torrent check succeeded, we have {}/{} pieces: {:.1}%", torrent->local_bitfield.ones(), torrent->piece_count, torrent->local_bitfield.progress());
                 on_success();
             }
         });
     });
-
-    dbgln("We have {}/{} pieces", torrent->local_bitfield.ones(), torrent->piece_count);
 }
 
 u64 Engine::available_slots_for_torrent(NonnullRefPtr<Bits::Torrent> torrent) const
