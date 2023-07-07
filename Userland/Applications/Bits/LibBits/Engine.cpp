@@ -139,7 +139,8 @@ void Engine::register_views_update_callback(int interval_ms, Function<void(Nonnu
     });
 }
 
-Engine::Engine()
+Engine::Engine(Configuration config)
+    : m_config(move(config))
 {
     m_thread = Threading::Thread::construct([this]() -> intptr_t {
         m_event_loop = make<Core::EventLoop>();
@@ -236,7 +237,6 @@ Engine::Engine()
 
             auto maybe_torrent = m_torrents.get(handshake.info_hash());
             if (maybe_torrent.has_value()) {
-                // TODO: Add more checks before accepting the connection.
                 auto torrent = maybe_torrent.release_value();
 
                 if (torrent->state != TorrentState::STARTED && torrent->state != TorrentState::SEEDING) {
@@ -247,6 +247,13 @@ Engine::Engine()
 
                 if (torrent->local_peer_id == handshake.peer_id()) {
                     dbgln("Refusing connection from ourselves.");
+                    accept_connection({});
+                    return;
+                }
+
+                auto slots = available_slots_for_torrent(*torrent);
+                if (slots == 0) {
+                    dbgln("Refusing connection from {} for torrent {} because we have no available slots.", address, torrent->info_hash);
                     accept_connection({});
                     return;
                 }
@@ -343,7 +350,7 @@ void Engine::check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_s
     dbgln("We have {}/{} pieces", torrent->local_bitfield.ones(), torrent->piece_count);
 }
 
-void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
+u64 Engine::available_slots_for_torrent(NonnullRefPtr<Bits::Torrent> torrent) const
 {
     u64 total_connections_for_torrent = torrent->peer_sessions.size();
     for (auto const& [_, peer] : m_connecting_peers) {
@@ -351,7 +358,12 @@ void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
             total_connections_for_torrent++;
     }
 
-    size_t available_slots = min(max_connections_per_torrent - total_connections_for_torrent, max_total_connections - m_all_sessions.size());
+    return min(m_config.max_connections_per_torrent - total_connections_for_torrent, m_config.max_total_connections - m_all_sessions.size());
+}
+
+void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
+{
+    auto available_slots = available_slots_for_torrent(torrent);
     dbgln("We have {} available slots for new connections", available_slots);
 
     auto peer_it = torrent->peers.begin();

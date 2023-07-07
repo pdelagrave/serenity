@@ -8,6 +8,7 @@
 
 #include "Announcer.h"
 #include "Checker.h"
+#include "Configuration.h"
 #include "FixedSizeByteString.h"
 #include "Message.h"
 #include "MetaInfo.h"
@@ -25,12 +26,6 @@ class Engine : public Core::Object {
     C_OBJECT(Engine);
 
 public:
-    u64 const max_total_connections = 100;
-    u64 const max_connections_per_torrent = 10;
-    // An upload slot is when a peer is connected to us, they are intested in us, we aren't interested in them.
-    u64 const max_total_upload_slots = 50;
-    u64 const max_upload_slots_per_torrent = 5;
-
     void add_torrent(NonnullOwnPtr<MetaInfo>, DeprecatedString);
     void start_torrent(InfoHash info_hash);
     void stop_torrent(InfoHash);
@@ -38,9 +33,10 @@ public:
     void register_views_update_callback(int interval_ms, Function<void(NonnullOwnPtr<HashMap<InfoHash, TorrentView>>)> callback);
 
 private:
-    Engine();
+    Engine(Configuration config);
 
     u64 const BLOCK_LENGTH = 16 * KiB;
+    Configuration const m_config;
 
     OwnPtr<Core::EventLoop> m_event_loop;
     RefPtr<Threading::Thread> m_thread;
@@ -60,6 +56,7 @@ private:
     NonnullOwnPtr<HashMap<InfoHash, TorrentView>> torrents_views();
     void check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_success);
 
+    u64 available_slots_for_torrent(NonnullRefPtr<Torrent> torrent) const;
     void connect_more_peers(NonnullRefPtr<Torrent>);
     ErrorOr<void> piece_downloaded(u64 index, ReadonlyBytes data, NonnullRefPtr<PeerSession> peer);
     ErrorOr<void> piece_or_peer_availability_updated(NonnullRefPtr<Torrent> torrent);
