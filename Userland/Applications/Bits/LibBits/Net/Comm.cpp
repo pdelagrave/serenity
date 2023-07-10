@@ -221,86 +221,98 @@ ErrorOr<void> Comm::flush_output_buffer(NonnullRefPtr<Connection> connection)
     }
 }
 
-ErrorOr<ConnectionId> Comm::connect(Core::SocketAddress address, HandshakeMessage handshake)
+ConnectionId Comm::connect(Core::SocketAddress address, HandshakeMessage handshake)
 {
-    auto socket_fd = TRY(Core::System::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+    auto connection_id = Connection::s_next_connection_id++;
 
-    auto sockaddr = address.to_sockaddr_in();
-    auto connect_err = Core::System::connect(socket_fd, bit_cast<struct sockaddr*>(&sockaddr), sizeof(sockaddr));
-    if (connect_err.is_error() && connect_err.error().code() != EINPROGRESS)
-        return connect_err.release_error();
+    m_event_loop->deferred_invoke([&, connection_id, address, handshake] {
+        auto connection_or_err =  [&, connection_id, address] () -> ErrorOr<NonnullRefPtr<Connection>> {
+            auto socket_fd = TRY(Core::System::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
 
-    auto connection = TRY(create_connection(TRY(Core::TCPSocket::adopt_fd(socket_fd))));
+            auto sockaddr = address.to_sockaddr_in();
+            auto connect_err = Core::System::connect(socket_fd, bit_cast<struct sockaddr*>(&sockaddr), sizeof(sockaddr));
+            if (connect_err.is_error() && connect_err.error().code() != EINPROGRESS)
+                return connect_err.release_error();
 
-    connection->write_notifier->on_activation = [&, socket_fd, connection, handshake] {
-        // We were already connected and we can write again:
-        if (connection->handshake_sent) {
-            auto err = flush_output_buffer(connection);
-            if (err.is_error()) {
-                close_connection_internal(connection, DeprecatedString::formatted("Error flushing output buffer: {}", err.release_error()));
-            }
+            return TRY(create_connection(connection_id, TRY(Core::TCPSocket::adopt_fd(socket_fd))));
+        }();
+
+
+        if (connection_or_err.is_error()) {
+            dbgln("Failed to create a connection for peer {}, error: {}", address, connection_or_err.error());
+            // FIXME not something we can recover from, we should close the app gracefully at this point.
             return;
         }
 
-        // We were trying to connect, we can now figure out if it succeeded or not:
-        int so_error;
-        socklen_t len = sizeof(so_error);
-        auto ret = getsockopt(socket_fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
-        if (ret == -1) {
-            auto errn = errno;
-            close_connection_internal(connection, DeprecatedString::formatted("Error calling getsockopt when verifying if the connect() succeeded: errno: {} {}", errn, strerror(errn)));
-            return;
-        }
+        auto connection = connection_or_err.release_value();
 
-        if (so_error == ESUCCESS) {
-            connection->write_notifier->set_enabled(false);
-            connection->socket->on_ready_to_read = [&, connection] {
-                auto err = read_from_socket(connection);
+        connection->write_notifier->on_activation = [&, connection, handshake] {
+            // We were already connected and we can write again:
+            if (connection->handshake_sent) {
+                auto err = flush_output_buffer(connection);
                 if (err.is_error()) {
-                    close_connection_internal(connection, DeprecatedString::formatted("Error reading from socket: {}", err.release_error()));
+                    close_connection_internal(connection, DeprecatedString::formatted("Error flushing output buffer: {}", err.release_error()));
                 }
-            };
-            auto err = send_handshake(handshake, connection);
-            if (err.is_error()) {
-                close_connection_internal(connection, DeprecatedString::formatted("Error sending handshake for outgoing connection: {}", err.release_error()));
+                return;
             }
-        } else {
-            // Would be nice to have GNU extension strerrorname_np() so we can print ECONNREFUSED,... too.
-            close_connection_internal(connection, DeprecatedString::formatted("Error connecting: so_error: {}", strerror(so_error)));
-        }
-    };
 
-    // FIXME: Hack to make the notifier enabled on the Comm thread/eventloop. Simpler for now to have the Comm::connect() method to be synchronous because of the Connection() constructor and connection id generation.
-    m_event_loop->deferred_invoke([&, write_notifier = connection->write_notifier] {
-        write_notifier->set_enabled(true);
+            // We were trying to connect, we can now figure out if it succeeded or not:
+            int so_error;
+            socklen_t len = sizeof(so_error);
+            auto ret = getsockopt(connection->socket->fd(), SOL_SOCKET, SO_ERROR, &so_error, &len);
+            if (ret == -1) {
+                auto errn = errno;
+                close_connection_internal(connection, DeprecatedString::formatted("Error calling getsockopt when verifying if the connect() succeeded: errno: {} {}", errn, strerror(errn)));
+                return;
+            }
+
+            if (so_error == ESUCCESS) {
+                connection->write_notifier->set_enabled(false);
+                connection->socket->on_ready_to_read = [&, connection] {
+                    auto err = read_from_socket(connection);
+                    if (err.is_error()) {
+                        close_connection_internal(connection, DeprecatedString::formatted("Error reading from socket: {}", err.release_error()));
+                    }
+                };
+                auto err = send_handshake(handshake, connection);
+                if (err.is_error()) {
+                    close_connection_internal(connection, DeprecatedString::formatted("Error sending handshake for outgoing connection: {}", err.release_error()));
+                }
+            } else {
+                // Would be nice to have GNU extension strerrorname_np() so we can print ECONNREFUSED,... too.
+                close_connection_internal(connection, DeprecatedString::formatted("Error connecting: so_error: {}", strerror(so_error)));
+            }
+        };
     });
 
-    return connection->id;
+    return connection_id;
 }
 
 void Comm::send_message(ConnectionId connection_id, NonnullOwnPtr<Message> message)
 {
-    auto connection = m_connections.get(connection_id).value();
-    auto size = BigEndian<u32>(message->size());
-    dbgln("Sending message [{}b] {}", size, *message);
-    size_t total_size = message->size() + sizeof(u32); // message size + message payload
-    if (connection->output_message_buffer.empty_space() < total_size) {
-        // TODO: keep a non-serialized message queue?
-        // FIXME: Choke peer?
-        dbgln("Outgoing message buffer is full, dropping message");
-        return;
-    }
+    m_event_loop->deferred_invoke([&, connection_id, message = move(message)] {
+        auto connection = m_connections.get(connection_id).value();
+        auto size = BigEndian<u32>(message->size());
+        dbgln("Sending message {}", *message);
+        size_t total_size = message->size() + sizeof(u32); // message size + message payload
+        if (connection->output_message_buffer.empty_space() < total_size) {
+            // TODO: keep a non-serialized message queue?
+            // FIXME: Choke peer?
+            dbgln("Outgoing message buffer is full, dropping message");
+            return;
+        }
 
-    connection->output_message_buffer.write({ &size, sizeof(u32) });
-    connection->output_message_buffer.write(message->serialized);
+        connection->output_message_buffer.write({ &size, sizeof(u32) });
+        connection->output_message_buffer.write(message->serialized);
 
-    auto err = flush_output_buffer(*connection);
-    if (err.is_error()) {
-        close_connection_internal(*connection, DeprecatedString::formatted("Error flushing output buffer when sending message: {}", err.release_error()));
-        return;
-    }
+        auto err = flush_output_buffer(*connection);
+        if (err.is_error()) {
+            close_connection_internal(*connection, DeprecatedString::formatted("Error flushing output buffer when sending message: {}", err.release_error()));
+            return;
+        }
 
-    connection->last_message_sent_at = Core::DateTime::now();
+        connection->last_message_sent_at = Core::DateTime::now();
+    });
 }
 
 ErrorOr<void> Comm::send_handshake(HandshakeMessage handshake, NonnullRefPtr<Connection> connection)
@@ -331,7 +343,8 @@ ErrorOr<void> Comm::on_ready_to_accept()
     auto accepted_socket = TRY(m_server->accept());
     TRY(accepted_socket->set_blocking(false));
 
-    auto connection = TRY(create_connection(move(accepted_socket)));
+    auto connection = TRY(create_connection(Connection::s_next_connection_id++, move(accepted_socket)));
+    connection->write_notifier->set_enabled(false);
 
     connection->write_notifier->on_activation = [&, connection] {
         auto err = flush_output_buffer(connection);
@@ -349,13 +362,11 @@ ErrorOr<void> Comm::on_ready_to_accept()
     return {};
 }
 
-ErrorOr<NonnullRefPtr<Connection>> Comm::create_connection(NonnullOwnPtr<Core::TCPSocket> socket)
+ErrorOr<NonnullRefPtr<Connection>> Comm::create_connection(ConnectionId connection_id, NonnullOwnPtr<Core::TCPSocket> socket)
 {
     NonnullRefPtr<Core::Notifier> write_notifier = Core::Notifier::construct(socket->fd(), Core::Notifier::Type::Write);
-    // Initial state should be enabled when creating an outbound connection, disabled when accepting an inbound connection.
-    write_notifier->set_enabled(false);
 
-    auto connection = TRY(Connection::try_create(socket, write_notifier, 1 * MiB, 1 * MiB));
+    auto connection = TRY(Connection::try_create(connection_id, socket, write_notifier, 1 * MiB, 1 * MiB));
     m_connections.set(connection->id, connection);
     m_connection_stats.set(connection->id, ConnectionStats {});
 

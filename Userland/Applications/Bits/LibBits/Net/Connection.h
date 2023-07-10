@@ -15,9 +15,12 @@ namespace Bits {
 using ConnectionId = u64;
 
 struct Connection : public RefCounted<Connection> {
-    static ErrorOr<NonnullRefPtr<Connection>> try_create(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier> write_notifier, size_t input_buffer_size, size_t output_buffer_size);
+    AK_MAKE_NONCOPYABLE(Connection);
+public:
+    static Atomic<ConnectionId> s_next_connection_id;
+    static ErrorOr<NonnullRefPtr<Connection>> try_create(ConnectionId connection_id, NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier> write_notifier, size_t input_buffer_size, size_t output_buffer_size);
 
-    ConnectionId const id = { s_next_id++ };
+    ConnectionId const id;
     NonnullOwnPtr<Core::TCPSocket> socket;
     NonnullRefPtr<Core::Notifier> write_notifier;
 
@@ -44,8 +47,7 @@ struct Connection : public RefCounted<Connection> {
     bool session_established { false };
 
 private:
-    Connection(NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier>& write_notifier, CircularBuffer& input_message_buffer, CircularBuffer& output_message_buffer);
-    static ConnectionId s_next_id;
+    Connection(ConnectionId connection_id, NonnullOwnPtr<Core::TCPSocket>& socket, NonnullRefPtr<Core::Notifier>& write_notifier, CircularBuffer& input_message_buffer, CircularBuffer& output_message_buffer);
 };
 
 }

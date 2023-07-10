@@ -193,14 +193,17 @@ Engine::Engine(Configuration config)
                 peer = session->peer;
 
                 auto torrent = peer->torrent;
-                for (auto const& piece_index : session->interesting_pieces) {
-                    torrent->missing_pieces.get(piece_index).value()->havers.remove(session);
-                }
 
-                auto& piece = session->incoming_piece;
-                if (piece.index.has_value() && torrent->state == TorrentState::STARTED) {
-                    insert_piece_in_heap(torrent, piece.index.value());
-                    piece.index = {};
+                if (torrent->state == TorrentState::STARTED) {
+                    for (auto const& piece_index : session->interesting_pieces) {
+                        torrent->missing_pieces.get(piece_index).value()->havers.remove(session);
+                    }
+
+                    auto& piece = session->incoming_piece;
+                    if (piece.index.has_value()) {
+                        insert_piece_in_heap(torrent, piece.index.value());
+                        piece.index = {};
+                    }
                 }
 
                 torrent->peer_sessions.remove(session);
@@ -373,16 +376,11 @@ void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
         auto& peer = peer_it->value;
         dbgln("Peer {} status: {}", peer->address, Peer::status_string(peer->status));
         if (peer->status == PeerStatus::Available) {
-            auto maybe_conn_id = m_comm.connect(peer->address, HandshakeMessage(torrent->info_hash, torrent->local_peer_id));
-            if (maybe_conn_id.is_error()) {
-                dbgln("Failed to create a connection for peer {}, error: {}", peer->address, maybe_conn_id.error());
-                peer->status = PeerStatus::Errored;
-            } else {
-                peer->status = PeerStatus::InUse;
-                dbgln("Connecting to peer {} connection id: {}", peer->address, maybe_conn_id.value());
-                m_connecting_peers.set(maybe_conn_id.value(), peer);
-                available_slots--;
-            }
+            auto connection_id = m_comm.connect(peer->address, HandshakeMessage(torrent->info_hash, torrent->local_peer_id));
+            peer->status = PeerStatus::InUse;
+            dbgln("Connecting to peer {} connection id: {}", peer->address, connection_id);
+            m_connecting_peers.set(connection_id, peer);
+            available_slots--;
         }
         ++peer_it;
     }
