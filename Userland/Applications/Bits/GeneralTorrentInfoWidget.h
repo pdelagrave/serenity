@@ -6,9 +6,8 @@
 
 #pragma once
 
-#include "../LibBits/BitField.h"
-#include "../LibBits/TorrentView.h"
-
+#include <LibBitTorrent/BitField.h>
+#include <LibBitTorrent/TorrentView.h>
 #include <LibGUI/Button.h>
 #include <LibGUI/Widget.h>
 

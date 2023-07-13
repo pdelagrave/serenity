@@ -5,7 +5,7 @@
  */
 
 #include "BitsWidget.h"
-#include "Tabs/GeneralTorrentInfoWidget.h"
+#include "GeneralTorrentInfoWidget.h"
 #include <AK/NumberFormat.h>
 #include <LibFileSystemAccessClient/Client.h>
 #include <LibGUI/Action.h>

@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "../LibBits/TorrentView.h"
+#include <LibBitTorrent/TorrentView.h>
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
 
@@ -15,6 +15,7 @@ class PeersTabWidget : public GUI::Widget {
 public:
     PeersTabWidget();
     void update(Vector<Bits::PeerView>);
+
 private:
     RefPtr<GUI::TableView> m_peers_table_view;
 };

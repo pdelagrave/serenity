@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "LibBits/Engine.h"
-#include "Tabs/GeneralTorrentInfoWidget.h"
-#include "Tabs/PeersTabWidget.h"
+#include "GeneralTorrentInfoWidget.h"
+#include "PeersTabWidget.h"
+#include <LibBitTorrent/Engine.h>
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
 
