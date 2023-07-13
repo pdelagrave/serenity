@@ -7,7 +7,7 @@ serenity_component(
 set(SOURCES
         LibBits/Bencode/BDecoder.cpp
         LibBits/Bencode/BEncoder.cpp
-        LibBits/Net/Comm.cpp
+        LibBits/Net/ConnectionManager.cpp
         LibBits/Net/Connection.cpp
         LibBits/Announcer.cpp
         LibBits/BitField.cpp

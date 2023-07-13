@@ -19,7 +19,7 @@ namespace Bits {
 
 class Message;
 
-// FIXME: move bandwidth/speed management to the engine, Comm should only report how many bytes were downloaded/uploaded since the last stats callback invocation.
+// FIXME: move bandwidth/speed management to the engine, ConnectionManager should only report how many bytes were downloaded/uploaded since the last stats callback invocation.
 struct ConnectionStats {
     ConnectionId connection_id;
     u64 bytes_downloaded { 0 };
@@ -28,11 +28,11 @@ struct ConnectionStats {
     u64 upload_speed { 0 };
 };
 
-class Comm : public Core::Object {
-    C_OBJECT(Comm);
+class ConnectionManager : public Core::Object {
+    C_OBJECT(ConnectionManager);
 
 public:
-    Comm(u16 const listen_port);
+    ConnectionManager(u16 const listen_port);
     void close_connection(ConnectionId connection_id, DeprecatedString reason);
 
     Function<void(ConnectionId, DeprecatedString)> on_peer_disconnect;
@@ -55,8 +55,6 @@ private:
 
     timeval m_last_speed_measurement;
     HashMap<ConnectionId, ConnectionStats> m_connection_stats;
-
-    // Comm BT low level network functions
     HashMap<ConnectionId, NonnullRefPtr<Connection>> m_connections;
 
     ErrorOr<void> read_from_socket(NonnullRefPtr<Connection> connection);

@@ -125,7 +125,7 @@ void Engine::stop_torrent(InfoHash info_hash)
         torrent->piece_heap.clear();
         torrent->missing_pieces.clear();
         for (auto& session : m_torrents.get(info_hash).value()->peer_sessions) {
-            m_comm.close_connection(session->connection_id, "Stopping torrent");
+            m_connection_manager.close_connection(session->connection_id, "Stopping torrent");
         }
     });
 }
@@ -148,7 +148,7 @@ void Engine::register_views_update_callback(int interval_ms, Function<void(Nonnu
 
 Engine::Engine(Configuration config)
     : m_config(move(config))
-    , m_comm(Comm(m_config.listen_port))
+    , m_connection_manager(ConnectionManager(m_config.listen_port))
 {
     m_thread = Threading::Thread::construct([this]() -> intptr_t {
         m_event_loop = make<Core::EventLoop>();
@@ -164,7 +164,7 @@ Engine::Engine(Configuration config)
         });
     };
 
-    m_comm.on_connection_established = [&](ConnectionId connection_id) {
+    m_connection_manager.on_connection_established = [&](ConnectionId connection_id) {
         m_event_loop->deferred_invoke([&, connection_id] {
             auto maybe_peer = m_connecting_peers.take(connection_id);
             VERIFY(maybe_peer.has_value());
@@ -172,7 +172,7 @@ Engine::Engine(Configuration config)
             auto peer = maybe_peer.release_value();
             if (peer->torrent->state != TorrentState::STARTED && peer->torrent->state != TorrentState::SEEDING) {
                 // FIXME: the peer status will end up errored even if it should be available to be reusable.
-                m_comm.close_connection(connection_id, "Connection established after torrent stopped");
+                m_connection_manager.close_connection(connection_id, "Connection established after torrent stopped");
                 return;
             }
 
@@ -181,11 +181,11 @@ Engine::Engine(Configuration config)
             peer->torrent->peer_sessions.set(session);
 
             dbgln("Peer connected: {}", *peer);
-            m_comm.send_message(connection_id, make<BitFieldMessage>(peer->torrent->local_bitfield));
+            m_connection_manager.send_message(connection_id, make<BitFieldMessage>(peer->torrent->local_bitfield));
         });
     };
 
-    m_comm.on_peer_disconnect = [&](ConnectionId connection_id, DeprecatedString reason) {
+    m_connection_manager.on_peer_disconnect = [&](ConnectionId connection_id, DeprecatedString reason) {
         m_event_loop->deferred_invoke([&, connection_id, reason] {
             dbgln("Disconnected {}: {}", connection_id, reason);
 
@@ -224,7 +224,7 @@ Engine::Engine(Configuration config)
         });
     };
 
-    m_comm.on_handshake_from_outgoing_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, auto accept_connection) {
+    m_connection_manager.on_handshake_from_outgoing_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, auto accept_connection) {
         m_event_loop->deferred_invoke([&, connection_id, handshake, accept_connection = move(accept_connection)] {
             auto maybe_peer = m_connecting_peers.get(connection_id);
             VERIFY(maybe_peer.has_value());
@@ -241,7 +241,7 @@ Engine::Engine(Configuration config)
         });
     };
 
-    m_comm.on_handshake_from_incoming_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, Core::SocketAddress address, auto accept_connection) {
+    m_connection_manager.on_handshake_from_incoming_connection = [&](ConnectionId connection_id, HandshakeMessage handshake, Core::SocketAddress address, auto accept_connection) {
         m_event_loop->deferred_invoke([&, connection_id, handshake, address, accept_connection = move(accept_connection)] {
             VERIFY(!m_connecting_peers.contains(connection_id));
             VERIFY(!m_all_sessions.contains(connection_id));
@@ -283,16 +283,16 @@ Engine::Engine(Configuration config)
         });
     };
 
-    m_comm.on_message_receive = [&](ConnectionId connection_id, ReadonlyBytes message_bytes) {
+    m_connection_manager.on_message_receive = [&](ConnectionId connection_id, ReadonlyBytes message_bytes) {
         m_event_loop->deferred_invoke([&, connection_id, buffer = MUST(ByteBuffer::copy(message_bytes))] {
             auto err = parse_input_message(connection_id, buffer.bytes());
             if (err.is_error()) {
-                m_comm.close_connection(connection_id, DeprecatedString::formatted("Error parsing input message for connection id {}: {}", connection_id, err.error().string_literal()));
+                m_connection_manager.close_connection(connection_id, DeprecatedString::formatted("Error parsing input message for connection id {}: {}", connection_id, err.error().string_literal()));
             }
         });
     };
 
-    m_comm.on_connection_stats_update = [&](NonnullOwnPtr<HashMap<ConnectionId, ConnectionStats>> stats) {
+    m_connection_manager.on_connection_stats_update = [&](NonnullOwnPtr<HashMap<ConnectionId, ConnectionStats>> stats) {
         m_event_loop->deferred_invoke([&, stats = move(stats)]() mutable {
             m_connection_stats = move(stats);
         });
@@ -380,7 +380,7 @@ void Engine::connect_more_peers(NonnullRefPtr<Torrent> torrent)
         auto& peer = peer_it->value;
         dbgln("Peer {} status: {}", peer->address, Peer::status_string(peer->status));
         if (peer->status == PeerStatus::Available) {
-            auto connection_id = m_comm.connect(peer->address, HandshakeMessage(torrent->info_hash, torrent->local_peer_id));
+            auto connection_id = m_connection_manager.connect(peer->address, HandshakeMessage(torrent->info_hash, torrent->local_peer_id));
             peer->status = PeerStatus::InUse;
             dbgln("Connecting to peer {} connection id: {}", peer->address, connection_id);
             m_connecting_peers.set(connection_id, peer);
@@ -404,7 +404,7 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
             dbgln("Removed piece {} from interesting pieces of {}", index, haver);
             if (haver->interesting_pieces.is_empty()) {
                 dbgln("Peer {} has no more interesting pieces, sending a NotInterested message", haver);
-                m_comm.send_message(haver->connection_id, make<NotInterestedMessage>());
+                m_connection_manager.send_message(haver->connection_id, make<NotInterestedMessage>());
                 haver->we_are_interested_in_peer = false;
             }
         }
@@ -413,7 +413,7 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
         dbgln("We completed piece {}", index);
 
         for (auto const& session : torrent->peer_sessions) {
-            m_comm.send_message(session->connection_id, make<HaveMessage>(index));
+            m_connection_manager.send_message(session->connection_id, make<HaveMessage>(index));
         }
 
         if (torrent->local_bitfield.progress() == 100) {
@@ -426,7 +426,7 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
 
             for (auto const& session : torrent->peer_sessions) {
                 if (session->bitfield.progress() == 100)
-                    m_comm.close_connection(session->connection_id, "Torrent fully downloaded.");
+                    m_connection_manager.close_connection(session->connection_id, "Torrent fully downloaded.");
             }
 
             return {};
@@ -462,7 +462,7 @@ ErrorOr<void> Engine::piece_or_peer_availability_updated(NonnullRefPtr<Torrent> 
                 dbgln("Requesting piece {} from peer {}", next_piece_index, haver);
                 haver->active = true;
                 u32 block_length = min(BLOCK_LENGTH, torrent->piece_length(next_piece_index));
-                m_comm.send_message(haver->connection_id, make<RequestMessage>(next_piece_index, 0, block_length));
+                m_connection_manager.send_message(haver->connection_id, make<RequestMessage>(next_piece_index, 0, block_length));
 
                 found_peer = true;
                 break;
@@ -583,10 +583,10 @@ ErrorOr<void> Engine::handle_bitfield(NonnullOwnPtr<BitFieldMessage> bitfield, N
 
     if (interesting) {
         // TODO we need a (un)choking algo
-        m_comm.send_message(peer->connection_id, make<UnchokeMessage>());
+        m_connection_manager.send_message(peer->connection_id, make<UnchokeMessage>());
         peer->we_are_choking_peer = false;
 
-        m_comm.send_message(peer->connection_id, make<InterestedMessage>());
+        m_connection_manager.send_message(peer->connection_id, make<InterestedMessage>());
         peer->we_are_interested_in_peer = true;
 
         TRY(piece_or_peer_availability_updated(torrent));
@@ -599,7 +599,7 @@ ErrorOr<void> Engine::handle_bitfield(NonnullOwnPtr<BitFieldMessage> bitfield, N
         if (available_peer_count > 0) {
             // TODO: set error type so we can connect to it again later if we need to
             // TODO: we have no idea if other peers will be reacheable or have better piece availability.
-            m_comm.close_connection(peer->connection_id, "Peer has no interesting pieces, and other peers are out there, disconnecting.");
+            m_connection_manager.close_connection(peer->connection_id, "Peer has no interesting pieces, and other peers are out there, disconnecting.");
         } else {
             dbgln("Peer has no interesting pieces, but we have no other peers to connect to. Staying connected in the hope that it will get some interesting pieces.");
         }
@@ -617,16 +617,16 @@ ErrorOr<void> Engine::handle_have(NonnullOwnPtr<HaveMessage> have_message, Nonnu
     if (peer->peer->torrent->missing_pieces.contains(piece_index)) {
         TRY(peer_has_piece(piece_index, peer));
         if (!peer->we_are_interested_in_peer) {
-            m_comm.send_message(peer->connection_id, make<UnchokeMessage>());
+            m_connection_manager.send_message(peer->connection_id, make<UnchokeMessage>());
             peer->we_are_choking_peer = false;
 
-            m_comm.send_message(peer->connection_id, make<InterestedMessage>());
+            m_connection_manager.send_message(peer->connection_id, make<InterestedMessage>());
             peer->we_are_interested_in_peer = true;
         }
         TRY(piece_or_peer_availability_updated(peer->peer->torrent));
     } else {
         if (peer->bitfield.progress() == 100 && peer->peer->torrent->local_bitfield.progress() == 100) {
-            m_comm.close_connection(peer->connection_id, "Peer and us have all pieces, disconnecting");
+            m_connection_manager.close_connection(peer->connection_id, "Peer and us have all pieces, disconnecting");
         }
     }
 
@@ -637,7 +637,7 @@ ErrorOr<void> Engine::handle_interested(NonnullRefPtr<Bits::PeerSession> peer)
 {
     peer->peer_is_interested_in_us = true;
     peer->we_are_choking_peer = false;
-    m_comm.send_message(peer->connection_id, make<UnchokeMessage>());
+    m_connection_manager.send_message(peer->connection_id, make<UnchokeMessage>());
     return {};
 }
 
@@ -675,7 +675,7 @@ ErrorOr<void> Engine::handle_piece(NonnullOwnPtr<PieceMessage> piece_message, No
             TRY(piece_or_peer_availability_updated(torrent));
         } else {
             auto next_block_length = min((size_t)BLOCK_LENGTH, (size_t)piece.length - piece.offset);
-            m_comm.send_message(peer->connection_id, make<RequestMessage>(index, piece.offset, next_block_length));
+            m_connection_manager.send_message(peer->connection_id, make<RequestMessage>(index, piece.offset, next_block_length));
         }
     }
     return {};
@@ -688,7 +688,7 @@ ErrorOr<void> Engine::handle_request(NonnullOwnPtr<RequestMessage> request, Nonn
     auto piece = TRY(ByteBuffer::create_uninitialized(torrent->piece_length(request->piece_index)));
     TRY(torrent->data_file_map->read_piece(request->piece_index, piece));
 
-    m_comm.send_message(peer->connection_id, make<PieceMessage>(request->piece_index, request->piece_offset, TRY(piece.slice(request->piece_offset, request->block_length))));
+    m_connection_manager.send_message(peer->connection_id, make<PieceMessage>(request->piece_index, request->piece_offset, TRY(piece.slice(request->piece_offset, request->block_length))));
     return {};
 }
 

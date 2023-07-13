@@ -12,7 +12,7 @@
 #include "FixedSizeByteString.h"
 #include "Message.h"
 #include "MetaInfo.h"
-#include "Net/Comm.h"
+#include "Net/ConnectionManager.h"
 #include "Peer.h"
 #include "PeerSession.h"
 #include "Torrent.h"
@@ -42,7 +42,7 @@ private:
     RefPtr<Threading::Thread> m_thread;
 
     Checker m_checker;
-    Comm m_comm;
+    ConnectionManager m_connection_manager;
 
     HashMap<InfoHash, NonnullRefPtr<Announcer>> m_announcers;
     HashMap<InfoHash, NonnullRefPtr<Torrent>> m_torrents;

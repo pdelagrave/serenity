@@ -4,15 +4,15 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include "Comm.h"
+#include "ConnectionManager.h"
 #include "HandshakeMessage.h"
-// FIXME: Ideally Comm would only know about the abstract Message class and shouldn't be exposed to any specific message types. Handshake and Keepalives are the only special message types and handled by Comm.
+// FIXME: Ideally ConnectionManager would only know about the abstract Message class and shouldn't be exposed to any specific message types. Handshake and Keepalives are the only special message types and handled by ConnectionManager.
 #include "../Message.h"
 #include <LibCore/System.h>
 
 namespace Bits {
 
-Comm::Comm(u16 const listen_port)
+ConnectionManager::ConnectionManager(u16 const listen_port)
     : m_server(Core::TCPServer::try_create(this).release_value())
 {
     m_thread = Threading::Thread::construct([this, listen_port]() -> intptr_t {
@@ -39,12 +39,12 @@ Comm::Comm(u16 const listen_port)
         start_timer(1000);
         return m_event_loop->exec();
     },
-        "Comm"sv);
+        "ConnectionManager"sv);
 
     m_thread->start();
 }
 
-void Comm::close_connection(Bits::ConnectionId connection_id, DeprecatedString reason)
+void ConnectionManager::close_connection(Bits::ConnectionId connection_id, DeprecatedString reason)
 {
     m_event_loop->deferred_invoke([&, connection_id, reason] {
         auto connection = m_connections.get(connection_id);
@@ -54,7 +54,7 @@ void Comm::close_connection(Bits::ConnectionId connection_id, DeprecatedString r
     });
 }
 
-void Comm::timer_event(Core::TimerEvent&)
+void ConnectionManager::timer_event(Core::TimerEvent&)
 {
     // TODO clean this up, put each in their own method, also make it so that we can have different intervals
 
@@ -99,7 +99,7 @@ void Comm::timer_event(Core::TimerEvent&)
     // TODO add handshake callbacks time outs
 }
 
-ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<Connection> connection)
+ErrorOr<void> ConnectionManager::read_from_socket(NonnullRefPtr<Connection> connection)
 {
     if (connection->handshake_received && !connection->session_established) {
         return {}; // Still waiting for the Engine to call us back for the decision about this connection.
@@ -187,7 +187,7 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<Connection> connection)
     return {};
 }
 
-ErrorOr<void> Comm::flush_output_buffer(NonnullRefPtr<Connection> connection)
+ErrorOr<void> ConnectionManager::flush_output_buffer(NonnullRefPtr<Connection> connection)
 {
     // VERIFY(peer->output_message_buffer.used_space() > 0);
     if (connection->output_message_buffer.used_space() == 0) {
@@ -220,7 +220,7 @@ ErrorOr<void> Comm::flush_output_buffer(NonnullRefPtr<Connection> connection)
     }
 }
 
-ConnectionId Comm::connect(Core::SocketAddress address, HandshakeMessage handshake)
+ConnectionId ConnectionManager::connect(Core::SocketAddress address, HandshakeMessage handshake)
 {
     auto connection_id = Connection::s_next_connection_id++;
 
@@ -288,7 +288,7 @@ ConnectionId Comm::connect(Core::SocketAddress address, HandshakeMessage handsha
     return connection_id;
 }
 
-void Comm::send_message(ConnectionId connection_id, NonnullOwnPtr<Message> message)
+void ConnectionManager::send_message(ConnectionId connection_id, NonnullOwnPtr<Message> message)
 {
     m_event_loop->deferred_invoke([&, connection_id, message = move(message)] {
         dbgln("Sending message to {}: {}", connection_id, *message);
@@ -322,7 +322,7 @@ void Comm::send_message(ConnectionId connection_id, NonnullOwnPtr<Message> messa
     });
 }
 
-ErrorOr<void> Comm::send_handshake(HandshakeMessage handshake, NonnullRefPtr<Connection> connection)
+ErrorOr<void> ConnectionManager::send_handshake(HandshakeMessage handshake, NonnullRefPtr<Connection> connection)
 {
     dbgln("Sending handshake: {}", handshake.to_string());
     connection->output_message_buffer.write({ &handshake, sizeof(handshake) });
@@ -331,7 +331,7 @@ ErrorOr<void> Comm::send_handshake(HandshakeMessage handshake, NonnullRefPtr<Con
     return {};
 }
 
-void Comm::close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message, bool should_invoke_callback)
+void ConnectionManager::close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message, bool should_invoke_callback)
 {
     connection->write_notifier->close();
     connection->socket->close();
@@ -346,7 +346,7 @@ void Comm::close_connection_internal(NonnullRefPtr<Connection> connection, Depre
         dbgln("Closing a remote-initiated connection: {}", error_message);
 }
 
-ErrorOr<void> Comm::on_ready_to_accept()
+ErrorOr<void> ConnectionManager::on_ready_to_accept()
 {
     auto accepted_socket = TRY(m_server->accept());
     TRY(accepted_socket->set_blocking(false));
@@ -371,7 +371,7 @@ ErrorOr<void> Comm::on_ready_to_accept()
     return {};
 }
 
-ErrorOr<NonnullRefPtr<Connection>> Comm::create_connection(ConnectionId connection_id, NonnullOwnPtr<Core::TCPSocket> socket)
+ErrorOr<NonnullRefPtr<Connection>> ConnectionManager::create_connection(ConnectionId connection_id, NonnullOwnPtr<Core::TCPSocket> socket)
 {
     NonnullRefPtr<Core::Notifier> write_notifier = Core::Notifier::construct(socket->fd(), Core::Notifier::Type::Write);
 
