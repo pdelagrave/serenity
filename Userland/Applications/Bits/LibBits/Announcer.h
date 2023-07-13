@@ -21,7 +21,7 @@ struct AnnounceStats {
 class Announcer : public Core::Object {
     C_OBJECT(Announcer)
 public:
-    static ErrorOr<NonnullRefPtr<Announcer>> create(InfoHash info_hash, AK::URL announce_url, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success);
+    static ErrorOr<NonnullRefPtr<Announcer>> create(InfoHash info_hash, Vector<Vector<URL>> announce_url, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success);
     void completed();
     void stopped();
 
@@ -36,13 +36,13 @@ private:
         None
     };
 
-    Announcer(NonnullRefPtr<Protocol::RequestClient> http_client, InfoHash info_hash, AK::URL announce_url, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success);
+    Announcer(NonnullRefPtr<Protocol::RequestClient> http_client, InfoHash info_hash, Vector<Vector<URL>> announce_urls, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success);
     ErrorOr<void> announce(EventType event_type = EventType::None);
     static DeprecatedString url_encode_bytes(ReadonlyBytes bytes);
 
     NonnullRefPtr<Protocol::RequestClient> m_http_client;
     InfoHash const m_info_hash;
-    AK::URL const m_announce_url;
+    Vector<Vector<URL>> const m_announce_urls;
     PeerId const m_local_peer_id;
     u16 const m_listen_port;
     u64 const m_torrent_session_key;
@@ -51,6 +51,7 @@ private:
 
     HashTable<NonnullRefPtr<Protocol::Request>> m_active_requests;
     int m_interval = 60 * 1000;
+    size_t m_current_announce_index = 0;
 };
 
 }

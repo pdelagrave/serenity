@@ -36,7 +36,9 @@ public:
 
     static FixedSizeByteString random()
     {
-        return {};
+        auto string = FixedSizeByteString();
+        fill_with_random({ string.m_data, size });
+        return string;
     }
 
     constexpr FixedSizeByteString& operator=(FixedSizeByteString const& other) = default;
@@ -54,7 +56,7 @@ public:
     }
 
 private:
-    FixedSizeByteString() { fill_with_random({ m_data, size }); }
+    FixedSizeByteString() { memset(m_data, 0, size); }
     u8 m_data[size] {};
 };
 

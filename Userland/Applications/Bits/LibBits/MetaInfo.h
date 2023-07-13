@@ -7,6 +7,7 @@
 #pragma once
 
 #include "Files.h"
+#include "FixedSizeByteString.h"
 #include <AK/DeprecatedString.h>
 #include <AK/Stream.h>
 #include <AK/URL.h>
@@ -17,7 +18,8 @@ class MetaInfo {
 public:
     static ErrorOr<NonnullOwnPtr<MetaInfo>> create(Stream&);
     URL announce() { return m_announce; };
-    ReadonlyBytes info_hash() const { return m_info_hash; }
+    Vector<Vector<URL>> announce_list() { return m_announce_list; };
+    InfoHash info_hash() const { return m_info_hash; }
     i64 piece_length() { return m_piece_length; }
     Vector<NonnullRefPtr<File>> files() { return m_files; }
     Optional<DeprecatedString> const& root_dir_name() const { return m_root_dir_name; }
@@ -26,9 +28,10 @@ public:
     i64 total_length();
 
 private:
-    MetaInfo() {};
+    MetaInfo(InfoHash info_hash);
     URL m_announce;
-    ByteBuffer m_info_hash;
+    Vector<Vector<URL>> m_announce_list;
+    InfoHash m_info_hash;
     i64 m_piece_length;
     ByteBuffer m_piece_hashes;
     Vector<NonnullRefPtr<File>> m_files;

@@ -41,7 +41,7 @@ struct Torrent : public RefCounted<Torrent> {
     bool bitfield_is_up_to_date = false;
     NonnullOwnPtr<TorrentDataFileMap> data_file_map;
 
-    URL announce_url;
+    Vector<Vector<URL>> announce_urls;
     TorrentState state = TorrentState::STOPPED;
 
     // Active torrent members

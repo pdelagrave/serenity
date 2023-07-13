@@ -37,6 +37,11 @@ public:
         return OrderedHashMap<DeprecatedString, BEncodingType>::get(key).value().has<T>();
     }
 
+    bool contains(DeprecatedString key)
+    {
+        return OrderedHashMap<DeprecatedString, BEncodingType>::contains(key);
+    }
+
     DeprecatedString get_string(DeprecatedString key)
     {
         return DeprecatedString::from_utf8(get<ByteBuffer>(key).bytes()).release_value();

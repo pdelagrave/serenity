@@ -7,35 +7,47 @@
 #include "MetaInfo.h"
 #include "Bencode/BDecoder.h"
 #include "Bencode/BEncoder.h"
-#include <AK/MemoryStream.h>
 #include <LibCrypto/Hash/HashManager.h>
 
 namespace Bits {
 
 ErrorOr<NonnullOwnPtr<MetaInfo>> MetaInfo::create(Stream& stream)
 {
-    auto meta_info = TRY(adopt_nonnull_own_or_enomem(new (nothrow) MetaInfo()));
     auto root = TRY(BDecoder::parse<Dict>(stream));
-
-    // TODO: support tracker-less torrent (DHT), some torrent files have no announce url.
-    meta_info->m_announce = URL(root.get_string("announce"));
-    if (!meta_info->m_announce.is_valid()) {
-        return Error::from_string_view(TRY(String::formatted("'{}' is not a valid URL", meta_info->m_announce)).bytes_as_string_view());
-    }
-
     auto info_dict = root.get<Dict>("info");
 
-    auto s1 = AllocatingMemoryStream();
+    // Calculating the torrent's info hash by hashing the info dict of the torrent file.
+    auto encode_stream = AllocatingMemoryStream();
+    TRY(BEncoder::bencode(info_dict, encode_stream));
+    size_t buffer_size = encode_stream.used_buffer_size();
+    auto info_dict_buffer = TRY(ByteBuffer::create_uninitialized(buffer_size));
+    TRY(encode_stream.read_until_filled(info_dict_buffer.bytes()));
 
-    TRY(BEncoder::bencode(info_dict, s1));
-    size_t buffer_size = s1.used_buffer_size();
-    auto buffer = TRY(ByteBuffer::create_uninitialized(buffer_size));
-    TRY(s1.read_until_filled(buffer.bytes()));
+    Crypto::Hash::Manager sha1_manager;
+    sha1_manager.initialize(Crypto::Hash::HashKind::SHA1);
+    sha1_manager.update(info_dict_buffer);
 
-    Crypto::Hash::Manager hash;
-    hash.initialize(Crypto::Hash::HashKind::SHA1);
-    hash.update(buffer.bytes().slice(0, buffer_size));
-    meta_info->m_info_hash = TRY(ByteBuffer::copy(hash.digest().bytes()));
+    auto meta_info = TRY(adopt_nonnull_own_or_enomem(new (nothrow) MetaInfo(InfoHash(sha1_manager.digest().bytes()))));
+
+    // TODO: support tracker-less torrent (DHT), some torrent files have no announce url.
+
+    // http://bittorrent.org/beps/bep_0012.html
+    if (root.contains("announce-list")) {
+        for (auto& tier_list : root.get<List>("announce-list")) {
+            auto tier = Vector<URL>();
+            for (auto& url : tier_list.get<List>()) {
+                tier.append(URL(DeprecatedString::from_utf8(url.get<ByteBuffer>().bytes()).release_value()));
+                if (!tier.last().is_valid())
+                    return Error::from_string_view(TRY(String::formatted("'{}' is not a valid URL", tier.last())).bytes_as_string_view());
+            }
+            meta_info->m_announce_list.append(move(tier));
+        }
+    } else {
+        meta_info->m_announce = URL(root.get_string("announce"));
+        if (!meta_info->m_announce.is_valid()) {
+            return Error::from_string_view(TRY(String::formatted("'{}' is not a valid URL", meta_info->m_announce)).bytes_as_string_view());
+        }
+    }
 
     meta_info->m_piece_length = info_dict.get<i64>("piece length");
     if (info_dict.contains("length")) {
@@ -69,6 +81,11 @@ ErrorOr<NonnullOwnPtr<MetaInfo>> MetaInfo::create(Stream& stream)
 i64 MetaInfo::total_length()
 {
     return m_total_length;
+}
+
+MetaInfo::MetaInfo(Bits::InfoHash info_hash)
+    : m_info_hash(info_hash)
+{
 }
 
 }

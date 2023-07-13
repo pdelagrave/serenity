@@ -34,8 +34,12 @@ void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString dat
             PeerId::random(),
             meta_info->total_length(),
             meta_info->piece_length());
-        torrent->announce_url = meta_info->announce();
 
+        if (meta_info->announce_list().size() > 0) {
+            torrent->announce_urls = meta_info->announce_list();
+        } else {
+            torrent->announce_urls = { { meta_info->announce() } };
+        }
         m_torrents.set(info_hash, move(torrent));
     });
 }
@@ -97,7 +101,7 @@ void Engine::start_torrent(InfoHash info_hash)
                 }
             };
             auto info_hash = torrent->info_hash;
-            m_announcers.set(info_hash, MUST(Announcer::create(info_hash, torrent->announce_url, torrent->local_peer_id, m_config.listen_port, torrent->tracker_session_key, move(get_stats_for_announce), move(on_announce_success))));
+            m_announcers.set(info_hash, MUST(Announcer::create(info_hash, torrent->announce_urls, torrent->local_peer_id, m_config.listen_port, torrent->tracker_session_key, move(get_stats_for_announce), move(on_announce_success))));
 
             // Calling this now because we might already have peers and we don't want to wait for the announce reponse, it could have failed for many reasons.
             connect_more_peers(torrent);
@@ -166,7 +170,7 @@ Engine::Engine(Configuration config)
             VERIFY(maybe_peer.has_value());
 
             auto peer = maybe_peer.release_value();
-            if (peer->torrent->state != TorrentState::STARTED) {
+            if (peer->torrent->state != TorrentState::STARTED && peer->torrent->state != TorrentState::SEEDING) {
                 // FIXME: the peer status will end up errored even if it should be available to be reusable.
                 m_comm.close_connection(connection_id, "Connection established after torrent stopped");
                 return;
@@ -417,14 +421,14 @@ ErrorOr<void> Engine::piece_downloaded(u64 index, ReadonlyBytes data, NonnullRef
             VERIFY(torrent->piece_heap.is_empty());
             VERIFY(torrent->missing_pieces.is_empty());
 
+            torrent->state = TorrentState::SEEDING;
+            m_announcers.get(torrent->info_hash).value()->completed();
+
             for (auto const& session : torrent->peer_sessions) {
                 if (session->bitfield.progress() == 100)
                     m_comm.close_connection(session->connection_id, "Torrent fully downloaded.");
             }
 
-            m_announcers.get(torrent->info_hash).value()->completed();
-
-            torrent->state = TorrentState::SEEDING;
             return {};
         }
     } else {
@@ -512,7 +516,7 @@ void Engine::insert_piece_in_heap(NonnullRefPtr<Torrent> torrent, u64 piece_inde
 ErrorOr<void> Engine::parse_input_message(ConnectionId connection_id, ReadonlyBytes message_bytes)
 {
     NonnullRefPtr<PeerSession> session = *m_all_sessions.get(connection_id).value();
-    if (session->peer->torrent->state != TorrentState::STARTED) {
+    if (session->peer->torrent->state != TorrentState::STARTED && session->peer->torrent->state != TorrentState::SEEDING) {
         dbgln("Discarding message from peer {} because torrent is not started anymore", session->peer->address);
         return {};
     }

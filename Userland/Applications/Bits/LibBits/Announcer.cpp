@@ -10,16 +10,16 @@
 
 namespace Bits {
 
-ErrorOr<NonnullRefPtr<Announcer>> Announcer::create(InfoHash info_hash, AK::URL announce_url, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success)
+ErrorOr<NonnullRefPtr<Announcer>> Announcer::create(InfoHash info_hash, Vector<Vector<URL>> announce_urls, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success)
 {
     auto http_client = TRY(Protocol::RequestClient::try_create());
-    return adopt_nonnull_ref_or_enomem(new (nothrow) Announcer(move(http_client), info_hash, move(announce_url), local_peer_id, listen_port, torrent_session_key, move(get_stats_for_announce), move(on_success)));
+    return adopt_nonnull_ref_or_enomem(new (nothrow) Announcer(move(http_client), info_hash, move(announce_urls), local_peer_id, listen_port, torrent_session_key, move(get_stats_for_announce), move(on_success)));
 }
 
-Announcer::Announcer(NonnullRefPtr<Protocol::RequestClient> http_client, InfoHash info_hash, AK::URL announce_url, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success)
+Announcer::Announcer(NonnullRefPtr<Protocol::RequestClient> http_client, InfoHash info_hash, Vector<Vector<URL>> announce_urls, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success)
     : m_http_client(move(http_client))
     , m_info_hash(info_hash)
-    , m_announce_url(move(announce_url))
+    , m_announce_urls(move(announce_urls))
     , m_local_peer_id(local_peer_id)
     , m_listen_port(listen_port)
     , m_torrent_session_key(torrent_session_key)
@@ -47,9 +47,34 @@ void Announcer::timer_event(Core::TimerEvent&)
 // https://wiki.theory.org/BitTorrentSpecification#Tracker_Request_Parameters
 ErrorOr<void> Announcer::announce(EventType event_type)
 {
+    // FIXME: Implement the tracker picking algorithm according to BEP 0012 http://bittorrent.org/beps/bep_0012.html
+    auto flat_announce_urls = Vector<URL>();
+    for (auto& tier : m_announce_urls) {
+            for (auto& url : tier) {
+               flat_announce_urls.append(url);
+            }
+    }
+
+    if (m_current_announce_index >= flat_announce_urls.size())
+        m_current_announce_index = 0;
+
+    auto url = flat_announce_urls.at(m_current_announce_index);
+
+    auto try_next_url = [&, event_type] {
+        deferred_invoke([&, event_type] {
+            m_current_announce_index++;
+            MUST(announce(event_type));
+        });
+    };
+
+    if (url.scheme() != "http" && url.scheme() != "https") {
+        dbgln("Unsupported tracker protocol: {}", url.scheme());
+        try_next_url();
+        return {};
+    }
+
     auto info_hash = url_encode_bytes(m_info_hash.bytes());
     auto my_peer_id = url_encode_bytes(m_local_peer_id.bytes());
-    auto url = m_announce_url;
 
     auto event_type_param = StringBuilder();
     switch (event_type) {
@@ -86,10 +111,16 @@ ErrorOr<void> Announcer::announce(EventType event_type)
     auto request = m_http_client->start_request("GET", url).release_nonnull();
     m_active_requests.set(request);
 
-    request->on_buffered_request_finish = [&, request, event_type](bool success, auto total_size, auto&, auto status_code, ReadonlyBytes payload) {
+    request->on_buffered_request_finish = [&, url, request, event_type, try_next_url](bool success, auto total_size, auto&, auto status_code, ReadonlyBytes payload) {
         dbgln("Announce response: success:{} total_size:{} status_code:{}", success, total_size, status_code);
 
-        auto err = [&]() -> ErrorOr<void> {
+        if (!success) {
+            dbgln("Announce failed with url: {} Retrying with the next one in the list.", url);
+            try_next_url();
+            return;
+        }
+
+        auto err = [&, &payload = payload]() -> ErrorOr<void> {
             auto response = TRY(BDecoder::parse<Dict>(payload));
 
             if (response.contains("failure reason")) {
