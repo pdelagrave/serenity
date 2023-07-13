@@ -7,7 +7,7 @@
 #pragma once
 
 #include "GeneralTorrentInfoWidget.h"
-#include "PeersTabWidget.h"
+#include "PeerListWidget.h"
 #include <LibBitTorrent/Engine.h>
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
@@ -55,7 +55,7 @@ private:
 
     RefPtr<GUI::TabWidget> m_bottom_tab_widget;
     RefPtr<GeneralTorrentInfoWidget> m_general_widget;
-    RefPtr<PeersTabWidget> m_peer_list_widget;
+    RefPtr<PeerListWidget> m_peer_list_widget;
 
     NonnullRefPtr<Bits::Engine> m_engine;
 };

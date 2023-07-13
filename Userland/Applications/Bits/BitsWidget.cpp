@@ -183,7 +183,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
     widget->m_bottom_tab_widget = main_splitter.add<GUI::TabWidget>();
     widget->m_bottom_tab_widget->set_preferred_height(14);
     widget->m_general_widget = widget->m_bottom_tab_widget->add_tab<GeneralTorrentInfoWidget>("General"_string.release_value());
-    widget->m_peer_list_widget = widget->m_bottom_tab_widget->add_tab<PeersTabWidget>("Peers"_string.release_value());
+    widget->m_peer_list_widget = widget->m_bottom_tab_widget->add_tab<PeerListWidget>("Peers"_string.release_value());
 
     auto selected_torrent = [widget]() -> Optional<Bits::TorrentView> {
         int selected_index = widget->m_torrents_table_view->selection().first().row();
@@ -193,30 +193,30 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
             return {};
     };
 
-    auto update_general_tab_widget = [widget, selected_torrent] {
+    auto update_general_widget = [widget, selected_torrent] {
         widget->m_general_widget->update(selected_torrent());
     };
 
-    auto update_peer_tab_widget = [widget, selected_torrent] {
+    auto update_peer_list_widget = [widget, selected_torrent] {
         auto peers = selected_torrent().map([&](auto torrent) -> auto { return torrent.peers; }).value_or({});
         widget->m_peer_list_widget->update(peers);
     };
 
-    widget->m_torrents_table_view->on_selection_change = [update_peer_tab_widget, update_general_tab_widget] {
-        update_general_tab_widget();
-        update_peer_tab_widget();
+    widget->m_torrents_table_view->on_selection_change = [update_peer_list_widget, update_general_widget] {
+        update_general_widget();
+        update_peer_list_widget();
     };
 
-    widget->m_engine->register_views_update_callback(200, [&, widget, &event_loop = Core::EventLoop::current(), update_general_tab_widget, update_peer_tab_widget](NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>> torrents) {
-        event_loop.deferred_invoke([&, widget, update_general_tab_widget, update_peer_tab_widget, torrents = move(torrents)]() mutable {
+    widget->m_engine->register_views_update_callback(200, [&, widget, &event_loop = Core::EventLoop::current(), update_general_widget, update_peer_list_widget](NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>> torrents) {
+        event_loop.deferred_invoke([&, widget, update_general_widget, update_peer_list_widget, torrents = move(torrents)]() mutable {
             u64 progress = 0;
             for (auto const& torrent : *torrents) {
                 progress += torrent.value.progress;
             }
             widget->window()->set_progress(torrents->size() > 0 ? progress / torrents->size() : 0);
             widget->m_torrent_model->update(move(torrents));
-            update_general_tab_widget();
-            update_peer_tab_widget();
+            update_general_widget();
+            update_peer_list_widget();
         });
     });
 

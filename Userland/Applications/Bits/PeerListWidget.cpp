@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  */
 
-#include "PeersTabWidget.h"
+#include "PeerListWidget.h"
 #include <AK/NumberFormat.h>
 #include <LibGUI/BoxLayout.h>
 #include <LibGUI/Model.h>
@@ -110,14 +110,14 @@ private:
     Vector<Bits::PeerView> m_peers;
 };
 
-PeersTabWidget::PeersTabWidget()
+PeerListWidget::PeerListWidget()
 {
     set_layout<GUI::VerticalBoxLayout>();
     m_peers_table_view = add<GUI::TableView>();
     m_peers_table_view->set_model(make_ref_counted<PeerListModel>());
 }
 
-void PeersTabWidget::update(Vector<Bits::PeerView> peers)
+void PeerListWidget::update(Vector<Bits::PeerView> peers)
 {
     static_cast<PeerListModel*>(m_peers_table_view->model())->update(peers);
 }

@@ -10,10 +10,10 @@
 #include <LibGUI/TableView.h>
 #include <LibGUI/Widget.h>
 
-class PeersTabWidget : public GUI::Widget {
-    C_OBJECT(PeersTabWidget)
+class PeerListWidget : public GUI::Widget {
+    C_OBJECT(PeerListWidget)
 public:
-    PeersTabWidget();
+    PeerListWidget();
     void update(Vector<Bits::PeerView>);
 
 private:

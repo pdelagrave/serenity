@@ -7,7 +7,7 @@ serenity_component(
 set(SOURCES
     BitsWidget.cpp
     GeneralTorrentInfoWidget.cpp
-    PeersTabWidget.cpp
+    PeerListWidget.cpp
     main.cpp
 )
 
