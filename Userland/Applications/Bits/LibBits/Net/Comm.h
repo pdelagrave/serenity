@@ -63,7 +63,7 @@ private:
     ErrorOr<void> flush_output_buffer(NonnullRefPtr<Connection> connection);
 
     ErrorOr<void> send_handshake(HandshakeMessage handshake, NonnullRefPtr<Connection> connection);
-    void close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message);
+    void close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message, bool should_invoke_callback = true);
 
     ErrorOr<void> on_ready_to_accept();
     ErrorOr<NonnullRefPtr<Connection>> create_connection(ConnectionId connection_id, NonnullOwnPtr<Core::TCPSocket> socket);

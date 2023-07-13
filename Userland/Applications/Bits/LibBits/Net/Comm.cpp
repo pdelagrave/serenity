@@ -108,8 +108,7 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<Connection> connection)
     for (;;) {
         auto nread_or_error = connection->input_message_buffer.fill_from_stream(*connection->socket);
         if (connection->socket->is_eof()) {
-            close_connection_internal(connection, "Remote host closed the connection");
-            return {};
+            return Error::from_errno(EPIPE);
         }
         if (nread_or_error.is_error()) {
             auto code = nread_or_error.error().code();
@@ -118,8 +117,7 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<Connection> connection)
             } else if (code == EAGAIN) {
                 break;
             } else {
-                close_connection_internal(connection, DeprecatedString::formatted("Error reading from socket: err: {}  code: {}  codestr: {}", nread_or_error.error(), code, strerror(code)));
-                return {};
+                return nread_or_error.release_error();
             }
         }
         connection->bytes_downloaded_since_last_speed_measurement += nread_or_error.value();
@@ -166,7 +164,7 @@ ErrorOr<void> Comm::read_from_socket(NonnullRefPtr<Connection> connection)
                                 connection->socket->on_ready_to_read();
                                 connection->socket->set_notifications_enabled(true);
                             } else {
-                                close_connection_internal(connection, "Connection request rejected based on received handshake");
+                                close_connection_internal(connection, "Connection request rejected based on received handshake", false);
                             }
                         });
                     });
@@ -203,8 +201,9 @@ ErrorOr<void> Comm::flush_output_buffer(NonnullRefPtr<Connection> connection)
             if (code == EINTR) {
                 continue;
             } else if (code == EAGAIN) {
-                dbgln("Socket is not ready to write, enabling read to write notifier");
+                dbgln("Socket is not ready to write, enabling ready to write notifier");
                 connection->write_notifier->set_enabled(true);
+                return {};
             } else {
                 dbgln("Error writing to socket: err: {}  code: {}  codestr: {}", err.error(), code, strerror(code));
                 return Error::from_errno(code);
@@ -269,9 +268,10 @@ ConnectionId Comm::connect(Core::SocketAddress address, HandshakeMessage handsha
             if (so_error == ESUCCESS) {
                 connection->write_notifier->set_enabled(false);
                 connection->socket->on_ready_to_read = [&, connection] {
-                    auto err = read_from_socket(connection);
-                    if (err.is_error()) {
-                        close_connection_internal(connection, DeprecatedString::formatted("Error reading from socket: {}", err.release_error()));
+                    auto maybe_err = read_from_socket(connection);
+                    if (maybe_err.is_error()) {
+                        auto err = maybe_err.release_error();
+                        close_connection_internal(connection, DeprecatedString::formatted("Error reading from socket: {} code:{}, strerror:{}", err.string_literal(), err.code(), strerror(err.code())));
                     }
                 };
                 auto err = send_handshake(handshake, connection);
@@ -291,9 +291,16 @@ ConnectionId Comm::connect(Core::SocketAddress address, HandshakeMessage handsha
 void Comm::send_message(ConnectionId connection_id, NonnullOwnPtr<Message> message)
 {
     m_event_loop->deferred_invoke([&, connection_id, message = move(message)] {
-        auto connection = m_connections.get(connection_id).value();
+        dbgln("Sending message to {}: {}", connection_id, *message);
+
+        auto maybe_connection = m_connections.get(connection_id);
+        if (!maybe_connection.has_value()) {
+            dbgln("Connection {} does not exist, dropping message", connection_id);
+            return;
+        }
+        auto connection = maybe_connection.release_value();
+
         auto size = BigEndian<u32>(message->size());
-        dbgln("Sending message {}", *message);
         size_t total_size = message->size() + sizeof(u32); // message size + message payload
         if (connection->output_message_buffer.empty_space() < total_size) {
             // TODO: keep a non-serialized message queue?
@@ -324,7 +331,7 @@ ErrorOr<void> Comm::send_handshake(HandshakeMessage handshake, NonnullRefPtr<Con
     return {};
 }
 
-void Comm::close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message)
+void Comm::close_connection_internal(NonnullRefPtr<Connection> connection, DeprecatedString error_message, bool should_invoke_callback)
 {
     connection->write_notifier->close();
     connection->socket->close();
@@ -333,9 +340,10 @@ void Comm::close_connection_internal(NonnullRefPtr<Connection> connection, Depre
     m_connection_stats.remove(connection->id);
     m_connections.remove(connection->id);
 
-    // Assuming that in all cases, if we sent the handshake, the engine is aware of the connection, and it's safe to invoke the callback.
-    if (connection->handshake_sent)
+    if (should_invoke_callback)
         on_peer_disconnect(connection->id, error_message);
+    else
+        dbgln("Closing a remote-initiated connection: {}", error_message);
 }
 
 ErrorOr<void> Comm::on_ready_to_accept()
@@ -354,9 +362,10 @@ ErrorOr<void> Comm::on_ready_to_accept()
     };
 
     connection->socket->on_ready_to_read = [&, connection] {
-        auto err = read_from_socket(connection);
-        if (err.is_error()) {
-            close_connection_internal(connection, DeprecatedString::formatted("Error reading from (accepted) socket: {}", err.release_error()));
+        auto maybe_err = read_from_socket(connection);
+        if (maybe_err.is_error()) {
+            auto err = maybe_err.release_error();
+            close_connection_internal(connection, DeprecatedString::formatted("Error reading from (accepted) socket: {} code:{}, strerror:{}", err.string_literal(), err.code(), strerror(err.code())), connection->handshake_sent);
         }
     };
     return {};
