@@ -57,22 +57,22 @@ void Engine::start_torrent(InfoHash info_hash)
                 torrent->state = TorrentState::ERROR;
                 return;
             }
-            auto fe = Core::File::open(local_file->local_path(), Core::File::OpenMode::ReadWrite);
-            if (fe.is_error()) {
-                dbgln("error opening file: {}", fe.error());
+            auto err_or_file = Core::File::open(local_file->local_path(), Core::File::OpenMode::ReadWrite);
+            if (err_or_file.is_error()) {
+                dbgln("error opening file: {}", err_or_file.error());
                 torrent->state = TorrentState::ERROR;
                 return;
             }
-            auto f = fe.release_value();
+            auto file = err_or_file.release_value();
 
             // FIXME: Fallocating or truncating is very slow on ext2, we should give better feedback to the user.
-            auto x = Core::System::posix_fallocate(f->fd(), 0, local_file->meta_info_file()->length());
-            if (x.is_error()) {
-                dbgln("error posix_fallocating file: {}", x.error());
+            auto maybe_err = Core::System::posix_fallocate(file->fd(), 0, local_file->meta_info_file()->length());
+            if (maybe_err.is_error()) {
+                dbgln("error posix_fallocating file: {}", maybe_err.error());
                 torrent->state = TorrentState::ERROR;
                 return;
             }
-            f->close();
+            file->close();
         }
 
         auto do_start_torrent = [this, torrent] {
