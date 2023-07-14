@@ -16,7 +16,7 @@
 #include <AK/Types.h>
 #include <initializer_list>
 
-namespace Bits {
+namespace BitTorrent {
 
 class Message {
 public:
@@ -224,8 +224,8 @@ public:
 }
 
 template<>
-struct AK::Formatter<Bits::Message> : AK::Formatter<StringView> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::Message const& value)
+struct AK::Formatter<BitTorrent::Message> : AK::Formatter<StringView> {
+    ErrorOr<void> format(FormatBuilder& builder, BitTorrent::Message const& value)
     {
         return Formatter<StringView>::format(builder, value.to_string());
     }

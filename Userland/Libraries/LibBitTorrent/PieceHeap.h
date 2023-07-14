@@ -13,7 +13,7 @@
 #include <AK/Types.h>
 #include <AK/Vector.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 struct PeerSession;
 
@@ -22,7 +22,7 @@ struct PieceStatus : public RefCounted<PieceStatus> {
     Optional<size_t> index_in_heap = {};
     u64 index_in_torrent;
     size_t key() const;
-    HashTable<NonnullRefPtr<Bits::PeerSession>> havers;
+    HashTable<NonnullRefPtr<BitTorrent::PeerSession>> havers;
     bool currently_downloading { false };
 };
 

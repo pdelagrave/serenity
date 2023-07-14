@@ -6,7 +6,7 @@
 
 #pragma once
 
-namespace Bits {
+namespace BitTorrent {
 
 enum class TorrentState {
     ERROR,

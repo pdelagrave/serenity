@@ -8,7 +8,7 @@
 
 #include <AK/Types.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 struct Configuration {
     // About the optimal number of connections per torrent:

@@ -10,7 +10,7 @@
 #include <LibCore/DateTime.h>
 #include <LibCore/Socket.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 using ConnectionId = u64;
 
@@ -53,8 +53,8 @@ private:
 }
 
 template<>
-struct AK::Formatter<Bits::Connection> : AK::Formatter<FormatString> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::Connection const& value)
+struct AK::Formatter<BitTorrent::Connection> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, BitTorrent::Connection const& value)
     {
         return Formatter<FormatString>::format(builder, "id:{} {}"sv, value.id, value.socket->address());
     }

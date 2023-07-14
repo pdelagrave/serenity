@@ -10,7 +10,7 @@
 #include "../Message.h"
 #include <LibCore/System.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 ConnectionManager::ConnectionManager(u16 const listen_port)
     : m_server(Core::TCPServer::try_create(this).release_value())
@@ -44,7 +44,7 @@ ConnectionManager::ConnectionManager(u16 const listen_port)
     m_thread->start();
 }
 
-void ConnectionManager::close_connection(Bits::ConnectionId connection_id, DeprecatedString reason)
+void ConnectionManager::close_connection(BitTorrent::ConnectionId connection_id, DeprecatedString reason)
 {
     m_event_loop->deferred_invoke([&, connection_id, reason] {
         auto connection = m_connections.get(connection_id);

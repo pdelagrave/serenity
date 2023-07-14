@@ -6,7 +6,7 @@
 
 #include "BDecoder.h"
 
-namespace Bits {
+namespace BitTorrent {
 
 static constexpr bool is_digit(char c)
 {

@@ -10,7 +10,7 @@
 #include <AK/NonnullOwnPtr.h>
 #include <AK/Stream.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 struct HandshakeMessage {
     u8 pstrlen;

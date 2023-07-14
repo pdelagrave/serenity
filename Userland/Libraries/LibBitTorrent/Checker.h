@@ -13,7 +13,7 @@
 #include <LibThreading/Mutex.h>
 #include <LibThreading/Thread.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 using CheckerStats = HashMap<InfoHash, float>;
 using CheckerStatsCallback = Function<void(CheckerStats)>;

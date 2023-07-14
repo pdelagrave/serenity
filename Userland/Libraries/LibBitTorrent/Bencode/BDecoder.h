@@ -9,7 +9,7 @@
 #include "BTypes.h"
 #include <AK/MemoryStream.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 // The 'bencoding' section of https://www.bittorrent.org/beps/bep_0003.html
 class BDecoder {

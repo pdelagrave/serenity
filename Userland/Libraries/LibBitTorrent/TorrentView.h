@@ -12,7 +12,7 @@
 #include <AK/DeprecatedString.h>
 #include <AK/Vector.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 struct PeerView {
     PeerId peer_id;

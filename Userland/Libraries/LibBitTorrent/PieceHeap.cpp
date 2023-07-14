@@ -9,7 +9,7 @@
 #include "PeerSession.h"
 #include "Torrent.h"
 
-namespace Bits {
+namespace BitTorrent {
 
 PieceStatus::PieceStatus(u64 index_in_torrent)
     : index_in_torrent(index_in_torrent)

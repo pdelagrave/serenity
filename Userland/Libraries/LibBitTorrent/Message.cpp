@@ -6,7 +6,7 @@
 
 #include "Message.h"
 
-namespace Bits {
+namespace BitTorrent {
 
 DeprecatedString Message::to_string(Type type)
 {

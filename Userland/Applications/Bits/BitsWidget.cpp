@@ -58,7 +58,7 @@ GUI::Variant TorrentModel::data(GUI::ModelIndex const& index, GUI::ModelRole rol
         case Column::State:
             return state_to_string(torrent.state).release_value_but_fixme_should_propagate_errors();
         case Column::Progress:
-            return DeprecatedString::formatted("{:.1}%", torrent.state == Bits::TorrentState::CHECKING ? torrent.check_progress : torrent.progress);
+            return DeprecatedString::formatted("{:.1}%", torrent.state == BitTorrent::TorrentState::CHECKING ? torrent.check_progress : torrent.progress);
         case Column::DownloadSpeed:
             return DeprecatedString::formatted("{}/s", human_readable_size(torrent.download_speed));
         case Column::UploadSpeed:
@@ -77,12 +77,12 @@ int TorrentModel::row_count(GUI::ModelIndex const&) const
     return m_torrents->size();
 }
 
-Bits::TorrentView TorrentModel::torrent_at(int index) const
+BitTorrent::TorrentView TorrentModel::torrent_at(int index) const
 {
     return m_torrents->get(m_hashes.at(index)).release_value();
 }
 
-void TorrentModel::update(NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>> torrents)
+void TorrentModel::update(NonnullOwnPtr<HashMap<BitTorrent::InfoHash, BitTorrent::TorrentView>> torrents)
 {
     m_torrents = move(torrents);
     m_hashes = m_torrents->keys();
@@ -92,7 +92,7 @@ void TorrentModel::update(NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentVie
 void BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> file, bool start)
 {
     dbgln("Opening file {}", filename);
-    auto maybe_meta_info = Bits::MetaInfo::create(*file);
+    auto maybe_meta_info = BitTorrent::MetaInfo::create(*file);
     file->close();
 
     if (maybe_meta_info.is_error()) {
@@ -101,14 +101,14 @@ void BitsWidget::open_file(String const& filename, NonnullOwnPtr<Core::File> fil
     }
 
     auto meta_info = maybe_meta_info.release_value();
-    auto info_hash = Bits::InfoHash(meta_info->info_hash());
+    auto info_hash = BitTorrent::InfoHash(meta_info->info_hash());
     m_engine->add_torrent(move(meta_info), Core::StandardPaths::downloads_directory());
 
     if (start)
         m_engine->start_torrent(info_hash);
 }
 
-ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine> engine, GUI::Window* window)
+ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<BitTorrent::Engine> engine, GUI::Window* window)
 {
     auto widget = TRY(adopt_nonnull_ref_or_enomem(new (nothrow) BitsWidget(move(engine))));
 
@@ -168,12 +168,12 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
     widget->m_torrents_table_view->on_context_menu_request = [widget, start_torrent_action, stop_torrent_action, cancel_checking_torrent_action](GUI::ModelIndex const& model_index, GUI::ContextMenuEvent const& event) {
         if (model_index.is_valid()) {
             widget->m_torrent_context_menu = GUI::Menu::construct();
-            Bits::TorrentState state = widget->m_torrent_model->torrent_at(model_index.row()).state;
-            if (state == Bits::TorrentState::STOPPED || state == Bits::TorrentState::ERROR)
+            BitTorrent::TorrentState state = widget->m_torrent_model->torrent_at(model_index.row()).state;
+            if (state == BitTorrent::TorrentState::STOPPED || state == BitTorrent::TorrentState::ERROR)
                 widget->m_torrent_context_menu->add_action(start_torrent_action);
-            else if (state == Bits::TorrentState::STARTED || state == Bits::TorrentState::SEEDING)
+            else if (state == BitTorrent::TorrentState::STARTED || state == BitTorrent::TorrentState::SEEDING)
                 widget->m_torrent_context_menu->add_action(stop_torrent_action);
-            else if (state == Bits::TorrentState::CHECKING)
+            else if (state == BitTorrent::TorrentState::CHECKING)
                 widget->m_torrent_context_menu->add_action(cancel_checking_torrent_action);
 
             widget->m_torrent_context_menu->popup(event.screen_position());
@@ -185,7 +185,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
     widget->m_general_widget = widget->m_bottom_tab_widget->add_tab<GeneralTorrentInfoWidget>("General"_string.release_value());
     widget->m_peer_list_widget = widget->m_bottom_tab_widget->add_tab<PeerListWidget>("Peers"_string.release_value());
 
-    auto selected_torrent = [widget]() -> Optional<Bits::TorrentView> {
+    auto selected_torrent = [widget]() -> Optional<BitTorrent::TorrentView> {
         int selected_index = widget->m_torrents_table_view->selection().first().row();
         if (selected_index >= 0)
             return widget->m_torrent_model->torrent_at(selected_index);
@@ -207,7 +207,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
         update_peer_list_widget();
     };
 
-    widget->m_engine->register_views_update_callback(200, [&, widget, &event_loop = Core::EventLoop::current(), update_general_widget, update_peer_list_widget](NonnullOwnPtr<HashMap<Bits::InfoHash, Bits::TorrentView>> torrents) {
+    widget->m_engine->register_views_update_callback(200, [&, widget, &event_loop = Core::EventLoop::current(), update_general_widget, update_peer_list_widget](NonnullOwnPtr<HashMap<BitTorrent::InfoHash, BitTorrent::TorrentView>> torrents) {
         event_loop.deferred_invoke([&, widget, update_general_widget, update_peer_list_widget, torrents = move(torrents)]() mutable {
             u64 progress = 0;
             for (auto const& torrent : *torrents) {
@@ -223,7 +223,7 @@ ErrorOr<NonnullRefPtr<BitsWidget>> BitsWidget::create(NonnullRefPtr<Bits::Engine
     return widget;
 }
 
-BitsWidget::BitsWidget(NonnullRefPtr<Bits::Engine> engine)
+BitsWidget::BitsWidget(NonnullRefPtr<BitTorrent::Engine> engine)
     : m_engine(move(engine))
 {
 }

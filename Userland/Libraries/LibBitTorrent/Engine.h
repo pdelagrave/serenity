@@ -20,7 +20,7 @@
 #include <AK/HashMap.h>
 #include <LibCore/Object.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 class Engine : public Core::Object {
     C_OBJECT(Engine);

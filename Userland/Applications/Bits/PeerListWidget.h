@@ -14,7 +14,7 @@ class PeerListWidget : public GUI::Widget {
     C_OBJECT(PeerListWidget)
 public:
     PeerListWidget();
-    void update(Vector<Bits::PeerView>);
+    void update(Vector<BitTorrent::PeerView>);
 
 private:
     RefPtr<GUI::TableView> m_peers_table_view;

@@ -10,7 +10,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 ErrorOr<void> create_file_with_subdirs(AK::DeprecatedString const& absolute_path)
 {

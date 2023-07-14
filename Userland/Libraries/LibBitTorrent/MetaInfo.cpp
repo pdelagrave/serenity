@@ -9,7 +9,7 @@
 #include "Bencode/BEncoder.h"
 #include <LibCrypto/Hash/HashManager.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 ErrorOr<NonnullOwnPtr<MetaInfo>> MetaInfo::create(Stream& stream)
 {
@@ -83,7 +83,7 @@ i64 MetaInfo::total_length()
     return m_total_length;
 }
 
-MetaInfo::MetaInfo(Bits::InfoHash info_hash)
+MetaInfo::MetaInfo(BitTorrent::InfoHash info_hash)
     : m_info_hash(info_hash)
 {
 }

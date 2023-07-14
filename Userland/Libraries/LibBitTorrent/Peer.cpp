@@ -8,7 +8,7 @@
 #include "PeerSession.h"
 #include "Torrent.h"
 
-namespace Bits {
+namespace BitTorrent {
 
 Peer::Peer(Core::SocketAddress address, NonnullRefPtr<Torrent> torrent)
     : address(move(address))

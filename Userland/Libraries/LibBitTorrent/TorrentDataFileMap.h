@@ -14,7 +14,7 @@
 #include <AK/Vector.h>
 #include <LibCore/File.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 class MultiFileMapperStream : public SeekableStream {
     AK_MAKE_NONCOPYABLE(MultiFileMapperStream);

@@ -10,7 +10,7 @@
 #include <AK/HashMap.h>
 #include <AK/Variant.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 struct List;
 class Dict;

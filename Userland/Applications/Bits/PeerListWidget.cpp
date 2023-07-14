@@ -100,14 +100,14 @@ public:
         return {};
     }
 
-    void update(Vector<Bits::PeerView> peers)
+    void update(Vector<BitTorrent::PeerView> peers)
     {
         m_peers = move(peers);
         did_update(UpdateFlag::DontInvalidateIndices);
     }
 
 private:
-    Vector<Bits::PeerView> m_peers;
+    Vector<BitTorrent::PeerView> m_peers;
 };
 
 PeerListWidget::PeerListWidget()
@@ -117,7 +117,7 @@ PeerListWidget::PeerListWidget()
     m_peers_table_view->set_model(make_ref_counted<PeerListModel>());
 }
 
-void PeerListWidget::update(Vector<Bits::PeerView> peers)
+void PeerListWidget::update(Vector<BitTorrent::PeerView> peers)
 {
     static_cast<PeerListModel*>(m_peers_table_view->model())->update(peers);
 }

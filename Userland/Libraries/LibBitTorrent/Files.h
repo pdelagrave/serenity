@@ -8,7 +8,7 @@
 
 #include <AK/DeprecatedString.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 ErrorOr<void> create_file_with_subdirs(AK::DeprecatedString const& absolute_path);
 

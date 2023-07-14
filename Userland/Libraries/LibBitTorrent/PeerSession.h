@@ -13,7 +13,7 @@
 #include <LibCore/DateTime.h>
 #include <LibCore/Socket.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 struct Torrent;
 struct Peer;
@@ -48,8 +48,8 @@ struct PeerSession : public RefCounted<PeerSession> {
 }
 
 template<>
-struct AK::Formatter<Bits::PeerSession> : AK::Formatter<FormatString> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::PeerSession const& session)
+struct AK::Formatter<BitTorrent::PeerSession> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, BitTorrent::PeerSession const& session)
     {
         return Formatter<FormatString>::format(builder,
             "{}/{}/{}{}{}{}/{}%"sv,

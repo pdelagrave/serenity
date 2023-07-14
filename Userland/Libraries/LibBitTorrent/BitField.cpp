@@ -7,7 +7,7 @@
 #include "BitField.h"
 #include <AK/Stream.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 BitField::BitField(u64 size)
     : m_size(size)

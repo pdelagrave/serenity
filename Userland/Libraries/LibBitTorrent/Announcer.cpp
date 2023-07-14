@@ -8,7 +8,7 @@
 #include "Bencode/BDecoder.h"
 #include <LibProtocol/Request.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 ErrorOr<NonnullRefPtr<Announcer>> Announcer::create(InfoHash info_hash, Vector<Vector<URL>> announce_urls, PeerId local_peer_id, u16 listen_port, u64 torrent_session_key, Function<AnnounceStats()> get_stats_for_announce, Function<void(Vector<Core::SocketAddress>)> on_success)
 {

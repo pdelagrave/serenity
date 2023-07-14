@@ -13,7 +13,7 @@ TorrentProgressBar::TorrentProgressBar()
     set_fixed_height(20);
 }
 
-void TorrentProgressBar::update(Optional<Bits::BitField> bitfield)
+void TorrentProgressBar::update(Optional<BitTorrent::BitField> bitfield)
 {
     m_bitfield = bitfield;
     GUI::Widget::update();
@@ -39,7 +39,7 @@ GeneralTorrentInfoWidget::GeneralTorrentInfoWidget()
     set_layout<GUI::VerticalBoxLayout>(4);
     m_progress_bar = add<TorrentProgressBar>();
 }
-void GeneralTorrentInfoWidget::update(Optional<Bits::TorrentView> torrent)
+void GeneralTorrentInfoWidget::update(Optional<BitTorrent::TorrentView> torrent)
 {
     if (torrent.has_value())
         m_progress_bar->update(torrent.value().bitfield);

@@ -10,7 +10,7 @@
 #include <AK/ByteBuffer.h>
 #include <AK/Format.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 class BitField {
 public:
@@ -38,8 +38,8 @@ private:
 }
 
 template<>
-struct AK::Formatter<Bits::BitField> : AK::Formatter<FormatString> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::BitField const& value)
+struct AK::Formatter<BitTorrent::BitField> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, BitTorrent::BitField const& value)
     {
         return Formatter<FormatString>::format(builder, "{}/{} ({:.2}%), storage: {}b, "sv, value.ones(), value.size(), value.progress(), value.data_size());
     }

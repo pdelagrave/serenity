@@ -9,7 +9,7 @@
 #include "BTypes.h"
 #include <AK/Stream.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 class BEncoder {
 public:

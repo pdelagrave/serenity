@@ -12,7 +12,7 @@
 #include <AK/Stream.h>
 #include <AK/URL.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 class MetaInfo {
 public:

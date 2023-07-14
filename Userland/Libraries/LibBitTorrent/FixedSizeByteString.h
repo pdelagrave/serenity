@@ -13,7 +13,7 @@
 #include <AK/Span.h>
 #include <AK/Types.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 template<size_t size>
 class FixedSizeByteString {
@@ -67,8 +67,8 @@ using InfoHash = FixedSizeByteString<20>;
 }
 
 template<size_t size>
-struct AK::Formatter<Bits::FixedSizeByteString<size>> : AK::Formatter<FormatString> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::FixedSizeByteString<size> const& value)
+struct AK::Formatter<BitTorrent::FixedSizeByteString<size>> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, BitTorrent::FixedSizeByteString<size> const& value)
     {
         for (u8 c : value.bytes())
             TRY(Formatter<FormatString>::format(builder, "{:02X}"sv, c));
@@ -77,8 +77,8 @@ struct AK::Formatter<Bits::FixedSizeByteString<size>> : AK::Formatter<FormatStri
 };
 
 template<size_t size>
-struct AK::Traits<Bits::FixedSizeByteString<size>> : public GenericTraits<Bits::FixedSizeByteString<size>> {
-    static constexpr unsigned hash(Bits::FixedSizeByteString<size> const& string)
+struct AK::Traits<BitTorrent::FixedSizeByteString<size>> : public GenericTraits<BitTorrent::FixedSizeByteString<size>> {
+    static constexpr unsigned hash(BitTorrent::FixedSizeByteString<size> const& string)
     {
         return AK::Traits<Span<u8 const>>::hash(string.bytes());
     }

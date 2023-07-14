@@ -6,7 +6,7 @@
 
 #include "Checker.h"
 
-namespace Bits {
+namespace BitTorrent {
 
 Checker::Checker()
 {

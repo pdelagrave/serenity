@@ -7,9 +7,9 @@
 #include "TorrentDataFileMap.h"
 #include <LibCrypto/Hash/HashManager.h>
 
-namespace Bits {
+namespace BitTorrent {
 
-NonnullOwnPtr<MultiFileMapperStream> MultiFileMapperStream::create(Vector<NonnullRefPtr<Bits::LocalFile>> files)
+NonnullOwnPtr<MultiFileMapperStream> MultiFileMapperStream::create(Vector<NonnullRefPtr<BitTorrent::LocalFile>> files)
 {
     size_t i = 0;
     u64 total_length = 0;

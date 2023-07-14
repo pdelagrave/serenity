@@ -19,9 +19,9 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
 
     bool start_cmd_line_torrent = false;
 
-    u64 max_total_connections = Bits::Configuration::DEFAULT_MAX_TOTAL_CONNECTIONS;
-    u64 max_connections_per_torrent = Bits::Configuration::DEFAULT_MAX_CONNECTIONS_PER_TORRENT;
-    u64 listen_port = Bits::Configuration::DEFAULT_LISTEN_PORT;
+    u64 max_total_connections = BitTorrent::Configuration::DEFAULT_MAX_TOTAL_CONNECTIONS;
+    u64 max_connections_per_torrent = BitTorrent::Configuration::DEFAULT_MAX_CONNECTIONS_PER_TORRENT;
+    u64 listen_port = BitTorrent::Configuration::DEFAULT_LISTEN_PORT;
     Vector<StringView> paths;
 
     Core::ArgsParser args_parser;
@@ -47,7 +47,7 @@ ErrorOr<int> serenity_main(Main::Arguments arguments)
     window->set_title("Bits");
     window->resize(800, 600);
 
-    auto engine = TRY(Bits::Engine::try_create(Bits::Configuration(max_total_connections, max_connections_per_torrent, listen_port)));
+    auto engine = TRY(BitTorrent::Engine::try_create(BitTorrent::Configuration(max_total_connections, max_connections_per_torrent, listen_port)));
 
     auto bits_widget = TRY(BitsWidget::create(engine, window));
     window->set_main_widget(bits_widget);

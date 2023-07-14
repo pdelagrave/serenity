@@ -10,7 +10,7 @@
 #include <AK/RefCounted.h>
 #include <LibCore/SocketAddress.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 enum class PeerStatus {
     Available,
@@ -36,8 +36,8 @@ struct Peer : public RefCounted<Peer> {
 }
 
 template<>
-struct AK::Formatter<Bits::Peer> : AK::Formatter<FormatString> {
-    ErrorOr<void> format(FormatBuilder& builder, Bits::Peer const& value)
+struct AK::Formatter<BitTorrent::Peer> : AK::Formatter<FormatString> {
+    ErrorOr<void> format(FormatBuilder& builder, BitTorrent::Peer const& value)
     {
         return Formatter<FormatString>::format(builder, "{}"sv, value.address.to_deprecated_string());
     }

@@ -6,7 +6,7 @@
 
 #include "Engine.h"
 
-namespace Bits {
+namespace BitTorrent {
 
 void Engine::add_torrent(NonnullOwnPtr<MetaInfo> meta_info, DeprecatedString data_path)
 {
@@ -359,7 +359,7 @@ void Engine::check_torrent(NonnullRefPtr<Torrent> torrent, Function<void()> on_s
     });
 }
 
-u64 Engine::available_slots_for_torrent(NonnullRefPtr<Bits::Torrent> torrent) const
+u64 Engine::available_slots_for_torrent(NonnullRefPtr<BitTorrent::Torrent> torrent) const
 {
     u64 total_connections_for_torrent = torrent->peer_sessions.size();
     for (auto const& [_, peer] : m_connecting_peers) {
@@ -522,10 +522,10 @@ ErrorOr<void> Engine::parse_input_message(ConnectionId connection_id, ReadonlyBy
     }
     auto stream = FixedMemoryStream(message_bytes);
 
-    using MessageType = Bits::Message::Type;
+    using MessageType = BitTorrent::Message::Type;
     auto message_type = TRY(stream.read_value<MessageType>());
 
-    dbgln("Got message type {}", Bits::Message::to_string(message_type));
+    dbgln("Got message type {}", BitTorrent::Message::to_string(message_type));
 
     switch (message_type) {
     case MessageType::Choke:
@@ -633,7 +633,7 @@ ErrorOr<void> Engine::handle_have(NonnullOwnPtr<HaveMessage> have_message, Nonnu
     return {};
 }
 
-ErrorOr<void> Engine::handle_interested(NonnullRefPtr<Bits::PeerSession> peer)
+ErrorOr<void> Engine::handle_interested(NonnullRefPtr<BitTorrent::PeerSession> peer)
 {
     peer->peer_is_interested_in_us = true;
     peer->we_are_choking_peer = false;

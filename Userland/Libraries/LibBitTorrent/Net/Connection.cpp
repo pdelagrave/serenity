@@ -7,7 +7,7 @@
 #include "Connection.h"
 #include "HandshakeMessage.h"
 
-namespace Bits {
+namespace BitTorrent {
 
 Atomic<ConnectionId> Connection::s_next_connection_id { 0 };
 

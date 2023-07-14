@@ -17,7 +17,7 @@
 #include <AK/RefCounted.h>
 #include <AK/URL.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 struct PeerSession;
 struct Peer;

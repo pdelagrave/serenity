@@ -15,7 +15,7 @@
 #include <LibThreading/Mutex.h>
 #include <LibThreading/Thread.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 class Message;
 

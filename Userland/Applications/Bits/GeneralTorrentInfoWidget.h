@@ -15,20 +15,20 @@ class TorrentProgressBar : public GUI::Widget {
     C_OBJECT(TorrentProgressBar)
 public:
     TorrentProgressBar();
-    void update(Optional<Bits::BitField>);
+    void update(Optional<BitTorrent::BitField>);
 
 protected:
     virtual void paint_event(GUI::PaintEvent& event) override;
 
 private:
-    Optional<Bits::BitField> m_bitfield;
+    Optional<BitTorrent::BitField> m_bitfield;
 };
 
 class GeneralTorrentInfoWidget : public GUI::Widget {
     C_OBJECT(GeneralTorrentInfoWidget)
 public:
     GeneralTorrentInfoWidget();
-    void update(Optional<Bits::TorrentView>);
+    void update(Optional<BitTorrent::TorrentView>);
 
 private:
     RefPtr<TorrentProgressBar> m_progress_bar;

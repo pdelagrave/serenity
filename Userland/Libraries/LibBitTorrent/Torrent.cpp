@@ -8,7 +8,7 @@
 #include "Peer.h"
 #include "PeerSession.h"
 
-namespace Bits {
+namespace BitTorrent {
 ErrorOr<String> state_to_string(TorrentState state)
 {
     switch (state) {

@@ -8,7 +8,7 @@
 #include "Peer.h"
 #include "Torrent.h"
 
-namespace Bits {
+namespace BitTorrent {
 
 PeerSession::PeerSession(NonnullRefPtr<Peer> peer, ConnectionId connection_id, PeerId id)
     : peer(peer)

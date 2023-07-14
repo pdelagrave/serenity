@@ -10,7 +10,7 @@
 #include <LibCore/Object.h>
 #include <LibProtocol/RequestClient.h>
 
-namespace Bits {
+namespace BitTorrent {
 
 struct AnnounceStats {
     u64 downloaded { 0 };

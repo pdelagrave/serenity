@@ -6,7 +6,7 @@
 
 #include "BEncoder.h"
 
-namespace Bits {
+namespace BitTorrent {
 ErrorOr<void> BEncoder::bencode(BEncodingType object, Stream& stream)
 {
     return object.visit(
